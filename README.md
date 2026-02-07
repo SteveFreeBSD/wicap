@@ -3,6 +3,12 @@
 WICAP is a system for real-time WiFi traffic analysis, handshake capture, and
 network intelligence. It consists of a capture core and a FastAPI dashboard UI.
 
+## Why WICAP
+
+- Real-time WiFi capture, scoring, and enrichment pipeline
+- Operational dashboard with live telemetry and incident views
+- Offline-capable Docker builds using vendored Python wheels for air-gapped or metered environments
+
 ## Responsible Use
 
 WICAP is intended for authorized security testing and network operations in
@@ -20,6 +26,7 @@ Key docs:
 - Configuration (env vars, required secrets): `docs/CONFIGURATION.md`
 - Testing (unit/replay/e2e/soak): `docs/TESTING.md`
 - Docker deployment: `docs/DOCKER.md`
+- Offline / metered workflow: `docs/OFFLINE_DEV.md`
 - Contributing workflow: `docs/CONTRIBUTING.md`
 
 ## Project Files (GitHub)
@@ -53,6 +60,17 @@ Key docs:
 ```bash
 docker compose up -d --build
 ```
+
+### Offline / Air-Gapped Setup
+
+If internet is unavailable or metered, pre-seed dependency wheels and build from local artifacts:
+
+```bash
+./scripts/setup_offline.sh
+docker compose up -d --build
+```
+
+See `docs/OFFLINE_DEV.md` for the full offline workflow.
 
 ### Access
 *   **Dashboard**: [http://localhost:8080](http://localhost:8080)

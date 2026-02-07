@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+
+{% block title %}Style Guide - WICAP{% endblock %}
+
+{% block content %}
+<div class="dashboard container">
+    <header class="page-header">
+        <h1><i class="fas fa-swatchbook"></i> Style Guide & Component Library</h1>
+        <p>Reference design system for Glass Cockpit UI V2</p>
+    </header>
+
+    <!-- Colors -->
+    <section class="glass-card mb-4">
+        <h2>Color Palette</h2>
+        <div class="style-grid">
+            <div class="color-swatch bg-blue"><span class="swatch-label">--accent-blue</span></div>
+            <div class="color-swatch bg-green"><span class="swatch-label">--accent-green</span></div>
+            <div class="color-swatch bg-orange"><span class="swatch-label">--accent-orange</span></div>
+            <div class="color-swatch bg-red"><span class="swatch-label">--accent-red</span></div>
+            <div class="color-swatch bg-purple"><span class="swatch-label">--accent-purple</span></div>
+            <div class="color-swatch bg-cyan"><span class="swatch-label">--accent-cyan</span></div>
+        </div>
+    </section>
+
+    <!-- Typography -->
+    <section class="glass-card mb-4">
+        <h2>Typography</h2>
+        <h1>Header 1 (2rem)</h1>
+        <h2>Header 2 (1.5rem)</h2>
+        <h3>Header 3 (1.2rem)</h3>
+        <p>Body text. The quick brown fox jumps over the lazy dog. <a href="#">Link example</a>.</p>
+        <small class="text-muted">Small muted text example.</small>
+        <pre class="mt-2"><code>// Monospace Code Block
+const wicap = "awesome";</code></pre>
+    </section>
+
+    <!-- Components -->
+    <section class="glass-card mb-4">
+        <h2>Components</h2>
+
+        <h3>Buttons</h3>
+        <div class="demo-row">
+            <button class="btn btn-primary">Primary Action</button>
+            <button class="btn btn-secondary">Secondary</button>
+            <button class="btn btn-danger">Danger Zone</button>
+            <button class="btn btn-outline">Outline</button>
+            <button class="btn btn-primary" disabled>Disabled</button>
+        </div>
+
+        <h3>Badges & Status</h3>
+        <div class="demo-row">
+            <span class="badge badge-success">Active</span>
+            <span class="badge badge-warning">Warning</span>
+            <span class="badge badge-danger">Critical</span>
+            <span class="badge badge-info">Info</span>
+            <span class="badge badge-neutral">Neutral</span>
+            <span class="status-badge status-badge--live"><span class="pulse-dot"></span> Live</span>
+        </div>
+
+        <h3>Glass Cards (Translucency Check)</h3>
+        <div class="card-demo-container">
+            <div class="glass-card">
+                <p>Standard Glass Card</p>
+                <small>Should show background blur.</small>
+            </div>
+            <div class="glass-card active-card">
+                <p>Active/Hover State</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Form Elements -->
+    <section class="glass-card mb-4">
+        <h2>Form Elements</h2>
+        <div class="form-group" style="max-width: 300px;">
+            <label>Input Field</label>
+            <input type="text" class="input-glass" placeholder="Type something...">
+        </div>
+        <div class="form-group" style="max-width: 300px;">
+            <label>Select Menu</label>
+            <select class="input-glass">
+                <option>Option 1</option>
+                <option>Option 2</option>
+            </select>
+        </div>
+    </section>
+</div>
+
+<style>
+    .style-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: 15px;
+    }
+
+    .color-swatch {
+        height: 80px;
+        border-radius: var(--radius);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.8rem;
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .bg-blue {
+        background: var(--accent-blue);
+        color: #000;
+    }
+
+    .bg-green {
+        background: var(--accent-green);
+        color: #000;
+    }
+
+    .bg-orange {
+        background: var(--accent-orange);
+        color: #000;
+    }
+
+    .bg-red {
+        background: var(--accent-red);
+        color: #fff;
+    }
+
+    .bg-purple {
+        background: var(--accent-purple);
+        color: #fff;
+    }
+
+    .bg-cyan {
+        background: var(--accent-cyan);
+        color: #000;
+    }
+
+    .demo-row {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+    }
+
+    .card-demo-container {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        padding: 20px;
+        background: url('https://raw.githubusercontent.com/steve/wicap/main/assets/bg-pattern.png');
+        /* Mock bg */
+        border-radius: var(--radius);
+    }
+
+    .form-group {
+        margin-bottom: 15px;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 5px;
+        color: var(--text-secondary);
+        font-size: 0.85rem;
+    }
+
+    .input-glass {
+        width: 100%;
+        background: rgba(0, 0, 0, 0.2);
+        border: 1px solid var(--border-color);
+        color: var(--text-primary);
+        padding: 8px 12px;
+        border-radius: 6px;
+        transition: all 0.2s;
+    }
+
+    .input-glass:focus {
+        outline: none;
+        border-color: var(--accent-blue);
+        background: rgba(0, 0, 0, 0.4);
+        box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.2);
+    }
+</style>
+{% endblock %}

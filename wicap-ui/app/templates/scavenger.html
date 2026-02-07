@@ -1,0 +1,400 @@
+{% extends "base.html" %}
+
+{% block title %}Scavenger - Forensic Intelligence{% endblock %}
+
+{% block content %}
+<div class="page-header header-split">
+    <div>
+        <h1><i class="fas fa-archive" style="color: var(--accent-yellow);"></i> Scavenger</h1>
+        <p>Offline Forensic Intelligence Engine - "Feeds on the dead"</p>
+    </div>
+    <div>
+        <button class="btn btn-secondary" onclick="refreshStatus()">
+            <i class="fas fa-sync-alt"></i> Refresh
+        </button>
+    </div>
+</div>
+
+<!-- Status Cards -->
+<div class="stats-grid">
+    <div class="stat-card" id="status-card">
+        <div class="stat-icon"><i class="fas fa-heartbeat"></i></div>
+        <div class="stat-info">
+            <span class="stat-value" id="scav-status">Idle</span>
+            <span class="stat-label">Status</span>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon"><i class="fas fa-file-archive"></i></div>
+        <div class="stat-info">
+            <span class="stat-value">{{ capture_count }}</span>
+            <span class="stat-label">Capture Files</span>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon"><i class="fas fa-hdd"></i></div>
+        <div class="stat-info">
+            <span class="stat-value">{{ capture_size }}</span>
+            <span class="stat-label">Total Size</span>
+        </div>
+    </div>
+    <div class="stat-card highlight">
+        <div class="stat-icon"><i class="fas fa-user-secret"></i></div>
+        <div class="stat-info">
+            <span class="stat-value" id="scav-clients">{{ clients_found }}</span>
+            <span class="stat-label">Clients Found</span>
+        </div>
+    </div>
+</div>
+
+<!-- Main Content Grid -->
+<div class="dashboard-grid">
+    <!-- Left: Results Panel -->
+    <div>
+        <!-- Findings Summary -->
+        <div class="card" style="margin-bottom: 1.5rem;">
+            <h2><i class="fas fa-chart-pie"></i> Findings Summary</h2>
+            <div class="stats-grid" style="margin-bottom: 0;">
+                <div class="stat-card">
+                    <div class="stat-info" style="align-items: center;">
+                        <span class="stat-value" id="find-clients" style="color: var(--accent-blue);">0</span>
+                        <span class="stat-label">Unique Clients</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-info" style="align-items: center;">
+                        <span class="stat-value" id="find-handshakes" style="color: var(--accent-green);">0</span>
+                        <span class="stat-label">Handshakes</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-info" style="align-items: center;">
+                        <span class="stat-value" id="find-pmkids" style="color: var(--accent-yellow);">0</span>
+                        <span class="stat-label">PMKIDs</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-info" style="align-items: center;">
+                        <span class="stat-value" id="find-correlations" style="color: var(--accent-purple);">0</span>
+                        <span class="stat-label">Correlations</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Top Probed SSIDs -->
+        <div class="card" style="margin-bottom: 1.5rem;">
+            <h2><i class="fas fa-wifi"></i> Top Probed SSIDs</h2>
+            <div class="table-container" style="max-height: 300px;">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>SSID</th>
+                            <th>Clients</th>
+                            <th>Interest</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ssid-tbody">
+                        <tr>
+                            <td colspan="3" class="empty">Run analysis to see results</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Client Dossiers -->
+        <div class="card">
+            <h2><i class="fas fa-id-card"></i> Client Dossiers</h2>
+            <div style="margin-bottom: 1rem;">
+                <input type="text" id="dossier-search" placeholder="Search by MAC address..."
+                    style="width: 100%; padding: 0.5rem; border-radius: var(--radius); border: 1px solid var(--border-color); background: var(--bg-tertiary); color: var(--text-primary);">
+            </div>
+            <div id="dossier-list" style="max-height: 400px; overflow-y: auto;">
+                <p style="color: var(--text-muted); text-align: center;">Run analysis to view client dossiers</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right: Controls Panel -->
+    <div>
+        <!-- Analysis Control -->
+        <div class="card" style="margin-bottom: 1.5rem;">
+            <h2><i class="fas fa-cogs"></i> Analysis Control</h2>
+
+            <div class="info-list" style="margin-bottom: 1rem;">
+                <div class="info-item">
+                    <span class="label">File Selection</span>
+                    <select id="file-selection"
+                        style="background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 0.25rem 0.5rem;">
+                        <option value="all">All Captures</option>
+                        <option value="recent">Recent (24h)</option>
+                        <option value="10" selected>Last 10 Files</option>
+                        <option value="50">Last 50 Files</option>
+                    </select>
+                </div>
+                <div class="info-item">
+                    <span class="label">Max Packets</span>
+                    <input type="number" id="max-packets" value="100000" min="0" step="10000"
+                        style="width: 100px; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 0.25rem 0.5rem; text-align: right;">
+                </div>
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+                <label style="color: var(--text-secondary); font-size: 0.875rem;">Agents</label>
+                <div style="display: flex; gap: 1rem; margin-top: 0.5rem;">
+                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                        <input type="checkbox" id="agent-shadow" checked>
+                        <span><i class="fas fa-user-ninja" style="color: var(--accent-blue);"></i> Shadow</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                        <input type="checkbox" id="agent-crypt" checked>
+                        <span><i class="fas fa-key" style="color: var(--accent-yellow);"></i> Crypt</span>
+                    </label>
+                </div>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                <button class="btn btn-secondary" id="btn-start" onclick="startAnalysis()"
+                    style="justify-content: center; background: var(--accent-green); color: white; border-color: var(--accent-green);">
+                    <i class="fas fa-play"></i> Start Analysis
+                </button>
+                <button class="btn btn-danger" id="btn-stop" onclick="stopAnalysis()" disabled
+                    style="justify-content: center;">
+                    <i class="fas fa-stop"></i> Stop
+                </button>
+            </div>
+        </div>
+
+        <!-- Progress Card -->
+        <div class="card" id="progress-card" style="margin-bottom: 1.5rem; display: none;">
+            <h2><i class="fas fa-spinner fa-spin"></i> Progress</h2>
+            <div style="margin-bottom: 1rem;">
+                <span id="progress-status" style="color: var(--text-secondary);">Initializing...</span>
+            </div>
+            <div
+                style="background: var(--bg-tertiary); border-radius: var(--radius); height: 24px; overflow: hidden; margin-bottom: 1rem;">
+                <div id="progress-bar"
+                    style="height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); transition: width 0.3s; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 600;">
+                    0%
+                </div>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); text-align: center; gap: 0.5rem;">
+                <div>
+                    <div style="color: var(--text-muted); font-size: 0.75rem;">Files</div>
+                    <div id="prog-files">0/0</div>
+                </div>
+                <div>
+                    <div style="color: var(--text-muted); font-size: 0.75rem;">Packets</div>
+                    <div id="prog-packets">0</div>
+                </div>
+                <div>
+                    <div style="color: var(--text-muted); font-size: 0.75rem;">Intel</div>
+                    <div id="prog-intel">0</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Export -->
+        <div class="card">
+            <h2><i class="fas fa-download"></i> Export</h2>
+            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                <a href="/api/scavenger/export/dossiers" class="btn btn-secondary" style="justify-content: center;">
+                    <i class="fas fa-file-code"></i> Export Dossiers (JSON)
+                </a>
+                <a href="/api/scavenger/export/summary" class="btn btn-secondary" style="justify-content: center;">
+                    <i class="fas fa-file-alt"></i> Export Summary
+                </a>
+                <button class="btn btn-danger" onclick="clearResults()" style="justify-content: center;">
+                    <i class="fas fa-trash"></i> Clear Results
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Scavenger UI Controller
+    const Scavenger = {
+        polling: null,
+
+        start: function () {
+            const agents = [];
+            if (document.getElementById('agent-shadow').checked) agents.push('shadow');
+            if (document.getElementById('agent-crypt').checked) agents.push('crypt');
+
+            const config = {
+                file_selection: document.getElementById('file-selection').value,
+                max_packets: parseInt(document.getElementById('max-packets').value) || 0,
+                agents: agents
+            };
+
+            fetch('/api/scavenger/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(config)
+            })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.status === 'started') {
+                        document.getElementById('btn-start').disabled = true;
+                        document.getElementById('btn-stop').disabled = false;
+                        document.getElementById('progress-card').style.display = 'block';
+                        this.startPolling();
+                    } else {
+                        alert('Error: ' + (data.message || 'Failed to start'));
+                    }
+                });
+        },
+
+        stop: function () {
+            fetch('/api/scavenger/stop', { method: 'POST' })
+                .then(r => r.json())
+                .then(() => {
+                    this.stopPolling();
+                    document.getElementById('btn-start').disabled = false;
+                    document.getElementById('btn-stop').disabled = true;
+                });
+        },
+
+        startPolling: function () {
+            this.polling = setInterval(() => this.updateStatus(), 1000);
+        },
+
+        stopPolling: function () {
+            if (this.polling) {
+                clearInterval(this.polling);
+                this.polling = null;
+            }
+        },
+
+        updateStatus: function () {
+            fetch('/api/scavenger/status')
+                .then(r => r.json())
+                .then(data => {
+                    const statusEl = document.getElementById('scav-status');
+                    const statusCard = document.getElementById('status-card');
+
+                    if (data.status === 'running') {
+                        statusEl.textContent = 'Running';
+                        statusEl.style.color = 'var(--accent-green)';
+                    } else if (data.status === 'complete') {
+                        statusEl.textContent = 'Complete';
+                        statusEl.style.color = 'var(--accent-blue)';
+                        this.stopPolling();
+                        document.getElementById('btn-start').disabled = false;
+                        document.getElementById('btn-stop').disabled = true;
+                        this.loadResults();
+                    } else if (data.status === 'error') {
+                        statusEl.textContent = 'Error';
+                        statusEl.style.color = 'var(--accent-red)';
+                        this.stopPolling();
+                        document.getElementById('btn-start').disabled = false;
+                        document.getElementById('btn-stop').disabled = true;
+                    } else {
+                        statusEl.textContent = 'Idle';
+                        statusEl.style.color = 'var(--text-secondary)';
+                    }
+
+                    // Update progress
+                    if (data.progress) {
+                        const pct = data.progress.percent || 0;
+                        document.getElementById('progress-bar').style.width = pct + '%';
+                        document.getElementById('progress-bar').textContent = pct + '%';
+                        document.getElementById('progress-status').textContent = data.progress.message || '';
+                        document.getElementById('prog-files').textContent =
+                            (data.progress.files_done || 0) + '/' + (data.progress.files_total || 0);
+                        document.getElementById('prog-packets').textContent =
+                            (data.progress.packets || 0).toLocaleString();
+                        document.getElementById('prog-intel').textContent =
+                            (data.progress.intelligence || 0).toLocaleString();
+                    }
+
+                    document.getElementById('scav-clients').textContent = data.clients || 0;
+                });
+        },
+
+        loadResults: function () {
+            fetch('/api/scavenger/results')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.findings) {
+                        document.getElementById('find-clients').textContent = data.findings.unique_clients || 0;
+                        document.getElementById('find-handshakes').textContent =
+                            (data.findings.complete_handshakes || []).length;
+                        document.getElementById('find-pmkids').textContent = data.findings.pmkids_found || 0;
+                        document.getElementById('find-correlations').textContent =
+                            data.findings.suggested_correlations || 0;
+                    }
+
+                    // Populate SSID table
+                    if (data.findings && data.findings.top_probed_ssids) {
+                        const tbody = document.getElementById('ssid-tbody');
+                        tbody.innerHTML = '';
+                        if (data.findings.top_probed_ssids.length === 0) {
+                            tbody.innerHTML = '<tr><td colspan="3" class="empty">No SSIDs found</td></tr>';
+                        } else {
+                            data.findings.top_probed_ssids.forEach(item => {
+                                const ssid = item[0] || '(broadcast)';
+                                const count = item[1];
+                                const interest = count >= 3 ? 'High' : count >= 2 ? 'Medium' : 'Low';
+                                const color = count >= 3 ? 'var(--accent-red)' : count >= 2 ? 'var(--accent-yellow)' : 'var(--text-muted)';
+                                tbody.innerHTML += `<tr>
+                            <td><i class="fas fa-wifi"></i> ${ssid}</td>
+                            <td>${count}</td>
+                            <td style="color: ${color}">${interest}</td>
+                        </tr>`;
+                            });
+                        }
+                    }
+
+                    this.loadDossiers();
+                });
+        },
+
+        loadDossiers: function () {
+            fetch('/api/scavenger/dossiers')
+                .then(r => r.json())
+                .then(data => {
+                    const container = document.getElementById('dossier-list');
+                    if (!data.dossiers || Object.keys(data.dossiers).length === 0) {
+                        container.innerHTML = '<p style="color: var(--text-muted); text-align: center;">No dossiers available</p>';
+                        return;
+                    }
+
+                    let html = '';
+                    for (const [mac, dossier] of Object.entries(data.dossiers)) {
+                        html += `
+                <div style="background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 0.75rem; margin-bottom: 0.5rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <a href="/device/${mac}" class="mac-link"><i class="fas fa-user"></i> ${mac}</a>
+                        <span class="badge badge-success">${dossier.pnl_count || 0} networks</span>
+                    </div>
+                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">
+                        Channels: ${(dossier.channels_seen || []).join(', ') || 'N/A'}
+                        ${dossier.is_randomized_mac ? ' | <span style="color: var(--accent-yellow);">Randomized MAC</span>' : ''}
+                    </div>
+                </div>`;
+                    }
+                    container.innerHTML = html;
+                });
+        }
+    };
+
+    // Global functions
+    function startAnalysis() { Scavenger.start(); }
+    function stopAnalysis() { Scavenger.stop(); }
+    function refreshStatus() { Scavenger.updateStatus(); Scavenger.loadResults(); }
+    function clearResults() {
+        if (confirm('Clear all Scavenger results?')) {
+            fetch('/api/scavenger/clear', { method: 'POST' }).then(() => location.reload());
+        }
+    }
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+        Scavenger.updateStatus();
+        Scavenger.loadResults();
+    });
+</script>
+{% endblock %}

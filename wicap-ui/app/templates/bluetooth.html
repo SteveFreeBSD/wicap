@@ -1,0 +1,477 @@
+{% extends "base.html" %}
+
+{% block title %}WICAP - Bluetooth Intelligence{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1><i class="fab fa-bluetooth-b"></i> Bluetooth Intelligence</h1>
+    <p class="page-subtitle">Real-time tracking of Bluetooth Low Energy (BLE) devices and beacons</p>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card glass-card glow-purple">
+        <div class="stat-value" id="stat-devices">0</div>
+        <div class="stat-label">Total Devices</div>
+    </div>
+    <div class="stat-card glass-card glow-blue">
+        <div class="stat-value" id="stat-obs">0</div>
+        <div class="stat-label">Observations</div>
+    </div>
+    <div class="stat-card glass-card glow-green">
+        <div class="stat-value" id="stat-active">0</div>
+        <div class="stat-label">Active (5m)</div>
+    </div>
+    <div class="stat-card glass-card glow-cyan">
+        <div class="stat-value" id="stat-vendors">0</div>
+        <div class="stat-label">Vendors</div>
+    </div>
+</div>
+
+<div class="glass-card">
+    <div class="card-header">
+        <h2><i class="fas fa-list"></i> Detected Devices</h2>
+        <div class="header-filters">
+            <label class="filter-toggle">
+                <input type="checkbox" id="filter-named" onchange="renderBTDevices()">
+                <span>Named Only</span>
+            </label>
+            <select id="filter-vendor" class="btn btn-secondary btn-sm" onchange="renderBTDevices()">
+                <option value="">All Vendors</option>
+            </select>
+            <select id="sort-by" class="btn btn-secondary btn-sm" onchange="renderBTDevices()">
+                <option value="last_seen">Sort: Last Seen</option>
+                <option value="confidence">Sort: Confidence</option>
+                <option value="rotation_risk">Sort: Rotation Risk</option>
+                <option value="rotation_cluster">Sort: Rotation Cluster</option>
+                <option value="recurrence">Sort: Recurrence</option>
+                <option value="activity_rate">Sort: Activity Rate</option>
+            </select>
+            <button class="btn btn-secondary btn-sm" onclick="fetchBTData()">
+                <i class="fas fa-sync-alt"></i> Refresh
+            </button>
+        </div>
+    </div>
+    <div class="bt-guidance">
+        <span class="badge badge-neutral">Known services only</span>
+        <span class="text-secondary small">Unknown/member UUIDs are hidden from the main list and retained only for fingerprint correlation.</span>
+        <span class="text-secondary small">Confidence reflects attribution quality, not threat severity.</span>
+    </div>
+    <div class="bt-table-meta text-secondary small" id="bt-table-meta">Showing 0 devices</div>
+    <div class="glass-table-container bt-table-wrap">
+        <table class="glass-table">
+            <thead>
+                <tr>
+                    <th>Address</th>
+                    <th>Vendor / Company</th>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Signal (RSSI)</th>
+                    <th>Services</th>
+                    <th>Confidence</th>
+                    <th>Behavior</th>
+                    <th>Last Seen</th>
+                </tr>
+            </thead>
+            <tbody id="bt-table-body">
+                <tr>
+                    <td colspan="9" class="text-center bt-empty">Loading Bluetooth intelligence...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="glass-card mt-2">
+    <div class="card-header">
+        <h2><i class="fas fa-industry"></i> Top Vendors</h2>
+    </div>
+    <div id="bt-vendor-list" class="tag-cloud">
+        <span class="text-muted">No vendor data yet</span>
+    </div>
+</div>
+
+<script>
+    let btDevices = [];
+    let btVendors = [];
+
+    function escapeHtml(value) {
+        const text = String(value ?? '');
+        return text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function sanitizeDisplayText(value, maxLen = 80) {
+        if (value === null || value === undefined) {
+            return '';
+        }
+        const raw = String(value);
+        const normalized = typeof raw.normalize === 'function' ? raw.normalize('NFKC') : raw;
+        const withoutControls = normalized
+            .replace(/\uFFFD/g, ' ')
+            .replace(/[\u0000-\u001F\u007F-\u009F]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+        if (!withoutControls) {
+            return '';
+        }
+        const ascii = typeof withoutControls.normalize === 'function'
+            ? withoutControls.normalize('NFKD').replace(/[^\x20-\x7E]/g, '')
+            : withoutControls;
+        return ascii.slice(0, maxLen).trim();
+    }
+
+    function sanitizeDisplayName(nameRaw) {
+        const cleaned = sanitizeDisplayText(nameRaw, 64);
+        if (!cleaned) {
+            return '';
+        }
+        if (cleaned.toLowerCase() === 'unknown') {
+            return '';
+        }
+        if (/^[0-9a-f:\-]{6,}$/i.test(cleaned)) {
+            return '';
+        }
+        const alnumCount = cleaned.replace(/[^a-z0-9]/gi, '').length;
+        if (alnumCount < 2) {
+            return '';
+        }
+        return cleaned;
+    }
+
+    function normalizeServiceLabel(rawService) {
+        const cleaned = sanitizeDisplayText(rawService, 90);
+        if (!cleaned) {
+            return null;
+        }
+        if (/^uuid\s+0x[0-9a-f]{4,8}$/i.test(cleaned)) {
+            return null;
+        }
+        return cleaned.replace(/\(\s*0x([0-9a-f]{4})\s*\)$/i, (_, shortCode) => ` (0x${shortCode.toUpperCase()})`);
+    }
+
+    function normalizeServiceList(services) {
+        const unique = [];
+        const seen = new Set();
+        for (const rawService of (Array.isArray(services) ? services : [])) {
+            const label = normalizeServiceLabel(rawService);
+            if (!label) {
+                continue;
+            }
+            const key = label.toLowerCase();
+            if (seen.has(key)) {
+                continue;
+            }
+            seen.add(key);
+            unique.push(label);
+        }
+        return unique;
+    }
+
+    function renderServicesCell(services, unknownCount = 0) {
+        const values = normalizeServiceList(services);
+        const unknown = Number.isFinite(Number(unknownCount)) ? Number(unknownCount) : 0;
+
+        if (!values.length && unknown === 0) {
+            return '<span class="text-muted">-</span>';
+        }
+
+        const preview = values.slice(0, 3).map(svc => {
+            const safe = escapeHtml(svc);
+            return `<span class="badge badge-neutral bt-service-badge" title="${safe}">${safe}</span>`;
+        }).join(' ');
+
+        const extras = [];
+        if (values.length > 3) {
+            extras.push(`<span class="text-muted">+${values.length - 3} more</span>`);
+        }
+        if (unknown > 0) {
+            extras.push(`<span class="text-muted bt-unknown-summary" title="These UUIDs are usually vendor/member-assigned. We hide raw codes and keep the count for device fingerprinting.">Fingerprint UUIDs hidden: ${unknown}</span>`);
+        }
+
+        return `
+            <div class="bt-services-cell">
+                <div class="bt-services-known">${preview || '<span class="text-muted">-</span>'}</div>
+                <div class="bt-services-meta">${extras.join(' ')}</div>
+            </div>
+        `;
+    }
+
+    function renderConfidenceCell(device) {
+        const scoreValue = Number.isFinite(Number(device.confidence_score)) ? Math.round(Number(device.confidence_score)) : 0;
+        const tierRaw = String(device.confidence_tier || 'low').toLowerCase();
+        const tierLabel = tierRaw === 'high' ? 'HIGH' : tierRaw === 'medium' ? 'MED' : 'LOW';
+        const accent = tierRaw === 'high'
+            ? 'var(--accent-green)'
+            : tierRaw === 'medium'
+                ? 'var(--accent-yellow)'
+                : 'var(--accent-red)';
+        const why = escapeHtml(device.why_matters || 'Confidence reflects BLE attribution quality.');
+        return `
+            <div class="bt-confidence-cell" title="${why}">
+                <span class="badge badge-neutral bt-confidence-badge" style="border-color:${accent}; color:${accent};">${scoreValue}% ${tierLabel}</span>
+            </div>
+        `;
+    }
+
+    function renderBehaviorCell(device) {
+        const labelRaw = String(device.behavior_label || 'sparse').toLowerCase();
+        const risk = Number.isFinite(Number(device.rotation_risk_score)) ? Math.round(Number(device.rotation_risk_score)) : 0;
+        const clusterSize = Number.isFinite(Number(device.rotation_cluster_size)) ? Number(device.rotation_cluster_size) : 1;
+        const peerCount = Math.max(0, clusterSize - 1);
+        const rotationScore = Number.isFinite(Number(device.rotation_correlation_score)) ? Math.round(Number(device.rotation_correlation_score)) : 0;
+        const rotationSuspected = Boolean(device.rotation_suspected);
+        const recurrenceRaw = String(device.recurrence_label || labelRaw || 'sparse').toLowerCase();
+        const recurrenceScore = Number.isFinite(Number(device.recurrence_score)) ? Math.round(Number(device.recurrence_score)) : 0;
+        const rate = Number.isFinite(Number(device.observation_rate_per_hour)) ? Number(device.observation_rate_per_hour).toFixed(1) : '0.0';
+        const dwell = Number.isFinite(Number(device.dwell_minutes)) ? Number(device.dwell_minutes).toFixed(1) : '0.0';
+        const summary = escapeHtml(device.recurrence_summary || device.rotation_summary || device.behavior_summary || 'BLE behavior summary unavailable.');
+        const label = labelRaw === 'steady' ? 'STEADY' : labelRaw === 'bursty' ? 'BURSTY' : labelRaw === 'intermittent' ? 'INTERMITTENT' : 'SPARSE';
+        const recurrenceLabel = recurrenceRaw === 'rotation-handoff'
+            ? 'ROTATION-HANDOFF'
+            : recurrenceRaw === 'steady'
+                ? 'STEADY'
+                : recurrenceRaw === 'intermittent'
+                    ? 'INTERMITTENT'
+                    : recurrenceRaw === 'bursty'
+                        ? 'BURSTY'
+                        : 'SPARSE';
+        const accent = labelRaw === 'steady'
+            ? 'var(--accent-green)'
+            : labelRaw === 'bursty'
+                ? 'var(--accent-yellow)'
+                : 'var(--accent-cyan)';
+        const rotationText = peerCount > 0
+            ? `Cluster ${clusterSize}${rotationSuspected ? ' suspect' : ''} (${rotationScore})`
+            : 'Cluster 1';
+        return `
+            <div class="bt-behavior-cell" title="${summary}">
+                <span class="badge badge-neutral bt-behavior-badge" style="border-color:${accent}; color:${accent};">${label}</span>
+                <div class="text-muted bt-behavior-line">Risk ${risk} | ${rate}/h | ${dwell}m</div>
+                <div class="text-muted bt-behavior-line">${rotationText}</div>
+                <div class="text-muted bt-behavior-line">Recurrence ${recurrenceLabel} (${recurrenceScore})</div>
+            </div>
+        `;
+    }
+
+    function classifySignal(rssiValue) {
+        if (rssiValue > -70) {
+            return { label: 'Strong', className: 'rssi-strong' };
+        }
+        if (rssiValue > -85) {
+            return { label: 'Moderate', className: 'rssi-medium' };
+        }
+        return { label: 'Weak', className: 'rssi-weak' };
+    }
+
+    function formatLastSeenParts(lastSeenRaw) {
+        if (!lastSeenRaw) {
+            return { absolute: 'N/A', relative: 'No recent signal' };
+        }
+        const dt = new Date(lastSeenRaw);
+        if (Number.isNaN(dt.getTime())) {
+            return { absolute: 'N/A', relative: 'Unknown timestamp' };
+        }
+        const now = Date.now();
+        const deltaSec = Math.max(0, Math.floor((now - dt.getTime()) / 1000));
+        let relative = `${deltaSec}s ago`;
+        if (deltaSec >= 60) {
+            const deltaMin = Math.floor(deltaSec / 60);
+            relative = `${deltaMin}m ago`;
+            if (deltaMin >= 60) {
+                const deltaHours = Math.floor(deltaMin / 60);
+                relative = `${deltaHours}h ago`;
+                if (deltaHours >= 24) {
+                    const deltaDays = Math.floor(deltaHours / 24);
+                    relative = `${deltaDays}d ago`;
+                }
+            }
+        }
+        const nowDate = new Date(now);
+        const sameDay = nowDate.toDateString() === dt.toDateString();
+        return {
+            absolute: sameDay
+                ? dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                : dt.toLocaleString(),
+            relative,
+        };
+    }
+
+    async function fetchBTData() {
+        try {
+            const res = await fetch('/api/devices/bluetooth');
+            if (!res.ok) {
+                let detail = 'Bluetooth API request failed';
+                try {
+                    const failure = await res.json();
+                    if (failure && failure.detail) {
+                        detail = String(failure.detail);
+                    }
+                } catch (_) {
+                    // Keep generic detail when response body is non-JSON.
+                }
+                throw new Error(detail);
+            }
+            const data = await res.json();
+            btDevices = data.devices || [];
+            btVendors = (data.stats && data.stats.top_vendors) ? data.stats.top_vendors : [];
+
+            // Update stats
+            document.getElementById('stat-devices').textContent = data.stats.total_devices;
+            document.getElementById('stat-obs').textContent = data.stats.total_observations.toLocaleString();
+            document.getElementById('stat-active').textContent = data.stats.active_5m;
+            document.getElementById('stat-vendors').textContent = data.stats.unique_vendors;
+
+            renderVendorFilters();
+            renderBTDevices();
+            renderVendors();
+        } catch (e) {
+            console.error(e);
+            showToast('Failed to load Bluetooth data', 'danger');
+        }
+    }
+
+    function renderVendorFilters() {
+        const select = document.getElementById('filter-vendor');
+        const current = select.value;
+        const options = btVendors
+            .map(v => sanitizeDisplayText(v.vendor, 64))
+            .filter(Boolean);
+        const unique = [...new Set(options)];
+
+        select.innerHTML = '';
+        const allOption = document.createElement('option');
+        allOption.value = '';
+        allOption.textContent = 'All Vendors';
+        select.appendChild(allOption);
+
+        unique.forEach((vendor) => {
+            const option = document.createElement('option');
+            option.value = vendor;
+            option.textContent = vendor;
+            select.appendChild(option);
+        });
+
+        select.value = current && unique.includes(current) ? current : '';
+    }
+
+    function renderVendors() {
+        const container = document.getElementById('bt-vendor-list');
+        if (!btVendors.length) {
+            container.innerHTML = '<span class="text-muted">No vendor data yet</span>';
+            return;
+        }
+        const rows = btVendors
+            .map((v) => {
+                const vendor = sanitizeDisplayText(v.vendor, 64);
+                if (!vendor) {
+                    return null;
+                }
+                return `<span class="badge badge-neutral">${escapeHtml(vendor)} (${v.count})</span>`;
+            })
+            .filter(Boolean);
+        container.innerHTML = rows.length ? rows.join(' ') : '<span class="text-muted">No vendor data yet</span>';
+    }
+
+    function renderBTDevices() {
+        const tbody = document.getElementById('bt-table-body');
+        const tableMeta = document.getElementById('bt-table-meta');
+        const showNamedOnly = document.getElementById('filter-named').checked;
+        const vendorFilter = document.getElementById('filter-vendor').value;
+        const sortBy = document.getElementById('sort-by').value;
+
+        // Sort by last seen desc
+        let filtered = btDevices.slice();
+        if (sortBy === 'confidence') {
+            filtered.sort((a, b) => Number(b.confidence_score || 0) - Number(a.confidence_score || 0));
+        } else if (sortBy === 'rotation_risk') {
+            filtered.sort((a, b) => Number(b.rotation_risk_score || 0) - Number(a.rotation_risk_score || 0));
+        } else if (sortBy === 'rotation_cluster') {
+            filtered.sort((a, b) => {
+                const clusterDelta = Number(b.rotation_correlation_score || 0) - Number(a.rotation_correlation_score || 0);
+                if (clusterDelta !== 0) {
+                    return clusterDelta;
+                }
+                return Number(b.rotation_cluster_size || 1) - Number(a.rotation_cluster_size || 1);
+            });
+        } else if (sortBy === 'recurrence') {
+            filtered.sort((a, b) => Number(b.recurrence_score || 0) - Number(a.recurrence_score || 0));
+        } else if (sortBy === 'activity_rate') {
+            filtered.sort((a, b) => Number(b.observation_rate_per_hour || 0) - Number(a.observation_rate_per_hour || 0));
+        } else {
+            filtered.sort((a, b) => new Date(b.last_seen || 0) - new Date(a.last_seen || 0));
+        }
+
+        if (showNamedOnly) {
+            filtered = filtered.filter((d) => Boolean(sanitizeDisplayName(d.name)));
+        }
+        if (vendorFilter) {
+            filtered = filtered.filter(d => (d.vendor || 'Unknown') === vendorFilter);
+        }
+
+        // Slice top 50
+        filtered = filtered.slice(0, 50);
+        tableMeta.textContent = `Showing ${filtered.length} of ${btDevices.length} devices`;
+
+        if (filtered.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center bt-empty">No devices found for the current filters.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = filtered.map(d => {
+            const rssiValue = Number.isFinite(Number(d.rssi_last)) ? Number(d.rssi_last) : -100;
+            const rssiPercent = Math.min(100, Math.max(0, (rssiValue + 100) * 2));
+            const rssiColor = rssiValue > -70 ? 'var(--accent-green)' : rssiValue > -85 ? 'var(--accent-yellow)' : 'var(--accent-red)';
+            const signal = classifySignal(rssiValue);
+            const safeAddr = escapeHtml(d.addr || '');
+            const cleanVendor = sanitizeDisplayText(d.vendor, 64);
+            const cleanName = sanitizeDisplayName(d.name);
+            const cleanType = sanitizeDisplayText(d.type || 'BLE', 24);
+            const safeVendor = cleanVendor ? escapeHtml(cleanVendor) : '<span class="text-muted">Unknown</span>';
+            const safeName = cleanName ? escapeHtml(cleanName) : '<span class="text-muted">Unnamed</span>';
+            const safeType = escapeHtml(cleanType || 'BLE');
+            const lastSeen = formatLastSeenParts(d.last_seen);
+
+            return `
+                <tr class="bt-row">
+                    <td class="font-mono bt-cell-device">
+                        <a href="/bluetooth/${encodeURIComponent(d.addr || '')}" class="bt-device-link">${safeAddr}</a>
+                    </td>
+                    <td class="bt-cell-vendor">${safeVendor}</td>
+                    <td class="font-bold bt-cell-name">${safeName}</td>
+                    <td><span class="badge">${safeType}</span></td>
+                    <td class="bt-cell-signal">
+                        <div class="bt-signal-wrap">
+                            <div class="bt-signal-meter">
+                                <div class="bt-signal-fill" style="width:${rssiPercent}%; background:${rssiColor};"></div>
+                            </div>
+                            <span class="bt-signal-value">${rssiValue} dBm</span>
+                            <span class="badge badge-neutral ${signal.className}">${signal.label}</span>
+                        </div>
+                    </td>
+                    <td class="bt-cell-services">
+                        ${renderServicesCell(d.services, d.service_unknown_count)}
+                    </td>
+                    <td class="bt-cell-confidence">
+                        ${renderConfidenceCell(d)}
+                    </td>
+                    <td class="bt-cell-behavior">
+                        ${renderBehaviorCell(d)}
+                    </td>
+                    <td class="bt-cell-last-seen" title="${d.last_seen ? escapeHtml(String(d.last_seen)) : 'N/A'}">
+                        <div>${lastSeen.absolute}</div>
+                        <div class="text-muted small">${lastSeen.relative}</div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    // Init
+    document.addEventListener('DOMContentLoaded', fetchBTData);
+    setInterval(fetchBTData, 10000);
+</script>
+{% endblock %}

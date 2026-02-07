@@ -1,0 +1,31 @@
+<div class="stat-card">
+    <div class="stat-icon"><i class="fas fa-chart-bar"></i></div>
+    <div class="stat-info">
+        <span class="stat-value">{{ stats.get('total_events', 0) | default(0) }}</span>
+        <span class="stat-label">Total Events</span>
+    </div>
+</div>
+
+<div class="stat-card">
+    <div class="stat-icon"><i class="fas fa-key"></i></div>
+    <div class="stat-info">
+        <span class="stat-value">{{ stats.get('total_handshakes', 0) | default(0) }}</span>
+        <span class="stat-label">Handshakes</span>
+    </div>
+</div>
+
+<div class="stat-card highlight">
+    <div class="stat-icon"><i class="fas fa-check-circle"></i></div>
+    <div class="stat-info">
+        <span class="stat-value">{{ stats.get('cracked', 0) | default(0) }}</span>
+        <span class="stat-label">Cracked</span>
+    </div>
+</div>
+
+<div class="stat-card">
+    <div class="stat-icon"><i class="fas fa-wifi"></i></div>
+    <div class="stat-info">
+        <span class="stat-value">{{ stats.get('active_clients', 0) }}</span>
+        <span class="stat-label">Active Clients (5m)</span>
+    </div>
+</div>

@@ -1,0 +1,282 @@
+{% extends "base.html" %}
+
+{% block title %}Device Dossier - {{ mac }} - WICAP{% endblock %}
+
+{% block content %}
+<div class="dashboard dossier-view">
+    <!-- Header Card -->
+    <div class="glass-card dossier-header">
+        <div class="dossier-icon">
+            <i class="fas fa-microchip"></i>
+        </div>
+        <div class="dossier-info">
+            <h1>{{ mac }}</h1>
+            <div class="dossier-badges" id="dossier-badges">
+                <span class="badge badge-neutral">Loading...</span>
+            </div>
+        </div>
+        <div class="dossier-actions">
+            <button class="btn btn-danger" onclick="alert('Not implemented: Deauth')"><i class="fas fa-ban"></i>
+                Block</button>
+            <button class="btn btn-secondary" onclick="window.history.back()"><i class="fas fa-arrow-left"></i>
+                Back</button>
+        </div>
+    </div>
+
+    <div class="dossier-grid">
+        <!-- Details Column -->
+        <div class="dossier-col">
+            <div class="glass-card">
+                <h3><i class="fas fa-info-circle"></i> Identity & Metadata</h3>
+                <ul class="detail-list" id="info-list">
+                    <li>Loading details...</li>
+                </ul>
+            </div>
+
+            <div class="glass-card">
+                <h3><i class="fas fa-history"></i> Activity Timeline</h3>
+                <div class="detail-stat">
+                    <span class="label">First Seen</span>
+                    <span class="value" id="first-seen">-</span>
+                </div>
+                <div class="detail-stat">
+                    <span class="label">Last Seen</span>
+                    <span class="value" id="last-seen">-</span>
+                </div>
+                <div class="detail-stat">
+                    <span class="label">Total Packets</span>
+                    <span class="value" id="total-packets">-</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Relationship Column -->
+        <div class="dossier-col">
+            <div class="glass-card">
+                <h3><i class="fas fa-project-diagram"></i> Known Associations</h3>
+                <div class="network-list" id="ssid-list">
+                    <div class="empty-state">No known networks</div>
+                </div>
+            </div>
+            <div class="glass-card">
+                <h3><i class="fas fa-network-wired"></i> Identity Cluster</h3>
+                <div class="network-list" id="identity-cluster">
+                    <div class="empty-state text-muted">No linked identities</div>
+                </div>
+            </div>
+            <div class="glass-card">
+                <h3><i class="fas fa-fingerprint"></i> Behavioral Fingerprint</h3>
+                <canvas id="behaviorChart" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .dossier-view {
+        max-width: 1000px;
+        margin: 0 auto;
+    }
+
+    .dossier-header {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        padding: 2rem;
+        margin-bottom: 20px;
+        background: linear-gradient(135deg, rgba(22, 27, 34, 0.9), rgba(30, 40, 60, 0.8));
+    }
+
+    .dossier-icon {
+        font-size: 3rem;
+        color: var(--accent-blue);
+        background: rgba(88, 166, 255, 0.1);
+        width: 80px;
+        height: 80px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        border: 2px solid var(--accent-blue);
+        box-shadow: 0 0 15px rgba(88, 166, 255, 0.3);
+    }
+
+    .dossier-info h1 {
+        margin: 0 0 10px 0;
+        font-family: 'Roboto Mono', monospace;
+        letter-spacing: 1px;
+    }
+
+    .dossier-badges {
+        display: flex;
+        gap: 8px;
+    }
+
+    .dossier-actions {
+        margin-left: auto;
+        display: flex;
+        gap: 10px;
+    }
+
+    .dossier-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+    }
+
+    .dossier-col {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    .detail-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+
+    .detail-list li {
+        padding: 12px 0;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        justify-content: space-between;
+    }
+
+    .detail-list li:last-child {
+        border-bottom: none;
+    }
+
+    .detail-stat {
+        display: flex;
+        justify-content: space-between;
+        padding: 12px 0;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .detail-stat .label {
+        color: var(--text-muted);
+    }
+
+    .detail-stat .value {
+        font-weight: 500;
+        font-family: 'Roboto Mono', monospace;
+    }
+
+    .network-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .ssid-tag {
+        background: rgba(63, 185, 80, 0.15);
+        border: 1px solid var(--accent-green);
+        color: var(--accent-green);
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 0.9rem;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .identity-tag {
+        background: rgba(88, 166, 255, 0.12);
+        border: 1px solid rgba(88, 166, 255, 0.6);
+        color: rgba(88, 166, 255, 0.95);
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 0.9rem;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    @media (max-width: 768px) {
+        .dossier-header {
+            flex-direction: column;
+            text-align: center;
+        }
+
+        .dossier-actions {
+            margin-left: 0;
+            width: 100%;
+            justify-content: center;
+        }
+
+        .dossier-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+<script>
+    const mac = "{{ mac }}";
+
+    async function loadDossier() {
+        try {
+            const res = await fetch(`/api/device/${mac}`);
+            const data = await res.json();
+
+            if (data.error) {
+                document.querySelector('.dossier-info h1').innerHTML += ' <span style="color:var(--accent-red)">(Not Found)</span>';
+                return;
+            }
+
+            // Update Badges
+            const badgesDiv = document.getElementById('dossier-badges');
+            let icon = data.type === 'AP' ? '<i class="fas fa-wifi"></i>' : '<i class="fas fa-mobile-alt"></i>';
+            document.querySelector('.dossier-icon').innerHTML = icon;
+
+            badgesDiv.innerHTML = `
+                <span class="badge ${data.seen ? 'badge-success' : 'badge-neutral'}">${data.seen ? 'ACTIVE' : 'OFFLINE'}</span>
+                <span class="badge badge-info">${data.type}</span>
+                <span class="badge badge-warning">${data.vendor}</span>
+            `;
+
+            // Update Info List
+            const list = document.getElementById('info-list');
+            list.innerHTML = `
+                <li><span class="text-muted">Vendor</span> <strong>${data.vendor}</strong></li>
+                <li><span class="text-muted">MAC OUI</span> <strong>${mac.substring(0, 8).toUpperCase()}</strong></li>
+                <li><span class="text-muted">Type</span> <strong>${data.type}</strong></li>
+            `;
+
+            // Update Stats
+            document.getElementById('first-seen').textContent = data.first_seen ? new Date(data.first_seen).toLocaleString() : 'Never';
+            document.getElementById('last-seen').textContent = data.last_seen ? new Date(data.last_seen).toLocaleString() : 'Never';
+            document.getElementById('total-packets').textContent = data.total_packets || 0;
+
+            // Update SSIDs
+            const ssidList = document.getElementById('ssid-list');
+            if (data.ssids && data.ssids.length > 0) {
+                ssidList.innerHTML = data.ssids.map(ssid =>
+                    `<span class="ssid-tag"><i class="fas fa-wifi"></i> ${ssid}</span>`
+                ).join('');
+            } else {
+                ssidList.innerHTML = '<div class="empty-state text-muted">No networks associated yet.</div>';
+            }
+
+            // Update Identity Cluster
+            const clusterList = document.getElementById('identity-cluster');
+            const cluster = data.identity_cluster;
+            if (cluster && cluster.members_detail && cluster.members_detail.length > 1) {
+                const chips = cluster.members_detail.map(member => {
+                    const label = member.protocol === 'bt' ? 'BLE' : 'Wi‑Fi';
+                    const name = member.local_name ? ` (${member.local_name})` : '';
+                    return `<span class="identity-tag"><i class="fas fa-link"></i> ${member.id} <span class="text-muted">${label}${name}</span></span>`;
+                });
+                clusterList.innerHTML = chips.join('');
+            } else {
+                clusterList.innerHTML = '<div class="empty-state text-muted">No linked identities</div>';
+            }
+
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    loadDossier();
+</script>
+{% endblock %}

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Networks - WICAP{% endblock %}
+
+{% block content %}
+<div class="page">
+    <header class="page-header">
+        <h1><i class="fas fa-wifi"></i> Discovered Networks</h1>
+        <p>{{ networks|length }} networks found</p>
+    </header>
+
+    <section class="card">
+        <div class="table-container">
+            <table class="admin-table">
+                <thead>
+                    <tr>
+                        <th>SSID</th>
+                        <th>BSSID</th>
+                        <th>Ch</th>
+                        <th>RSSI</th>
+                        <th>Vendor</th>
+                        <th>Security</th>
+                        <th>Last Seen</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for net in networks %}
+                    <tr>
+                        <td class="ssid">{{ net.ssid or '[Hidden]' }}</td>
+                        <td class="mono">{{ net.bssid }}</td>
+                        <td>{{ net.channel }}</td>
+                        <td
+                            class="rssi rssi-{{ 'strong' if (net.rssi or -100) > -50 else 'medium' if (net.rssi or -100) > -70 else 'weak' }}">
+                            {{ net.rssi }} dBm
+                        </td>
+                        <td>{{ net.vendor or 'Unknown' }}</td>
+                        <td>{{ net.security_info or '-' }}</td>
+                        <td>{{ net.last_seen }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="empty">No networks discovered yet</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+    </section>
+</div>
+{% endblock %}

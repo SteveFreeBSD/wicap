@@ -1,0 +1,514 @@
+{% extends "base.html" %}
+
+{% block title %}Smart-Crack Commander - WICAP{% endblock %}
+
+{% block content %}
+<div class="dashboard commander-layout">
+    <!-- Header -->
+    <header class="page-header full-width">
+        <div class="header-split">
+            <div>
+                <h1><i class="fas fa-brain"></i> Smart-Crack Commander</h1>
+                <p>Intelligent Strategy Engine & Attack Orchestration</p>
+            </div>
+            <div class="header-stats">
+                <div class="stat-item">
+                    <span class="stat-val">{{ handshakes|length }}</span>
+                    <span class="stat-label">Targets</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-val text-success">{{ handshakes|selectattr('crack_status', 'equalto',
+                        'cracked')|list|length }}</span>
+                    <span class="stat-label">Cracked</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Left: Target List -->
+    <section class="glass-card target-list-panel">
+        <div class="panel-header">
+            <h3><i class="fas fa-crosshairs"></i> Captured Targets</h3>
+        </div>
+        <div class="list-container">
+            {% if handshakes %}
+            {% for hs in handshakes %}
+            <div class="target-item"
+                onclick="selectTarget('{{ hs.ssid }}', '{{ hs.bssid }}', {{ hs.priority_score }}, '{{ hs.crack_status }}', this)">
+                <div class="target-main">
+                    <span class="target-ssid">{{ hs.ssid or '<i>[Hidden]</i>'|safe }}</span>
+                    <span class="badge badge-{{ hs.crack_status or 'pending' }}">{{ hs.crack_status or 'PENDING'
+                        }}</span>
+                </div>
+                <div class="target-meta">
+                    <span class="mono">{{ hs.bssid }}</span>
+                    <span
+                        class="priority priority-{{ 'high' if hs.priority_score > 70 else 'medium' if hs.priority_score > 40 else 'low' }}">
+                        P:{{ hs.priority_score }}
+                    </span>
+                </div>
+            </div>
+            {% endfor %}
+            {% else %}
+            <div class="empty-state">No handshakes captured yet.</div>
+            {% endif %}
+        </div>
+    </section>
+
+    <!-- Right: Commander View -->
+    <section class="glass-card commander-panel" id="commander-view">
+        <div class="empty-state-large">
+            <i class="fas fa-chess-knight"></i>
+            <h3>Select a Target</h3>
+            <p>Select a handshake from the list to generate an attack strategy.</p>
+        </div>
+    </section>
+</div>
+
+<!-- Template for Commander Content (Injected via JS) -->
+<template id="commander-template">
+    <div class="commander-content">
+        <div class="commander-header">
+            <div class="target-identity">
+                <h2 id="cmd-ssid"></h2>
+                <div class="target-chips">
+                    <span class="chip" id="cmd-bssid"></span>
+                    <span class="chip" id="cmd-vendor"></span>
+                </div>
+            </div>
+            <div class="commander-controls">
+                <button class="btn btn-primary" id="btn-attack" onclick="startAttack()">
+                    <i class="fas fa-meteor"></i> LAUNCH STRATEGY
+                </button>
+            </div>
+        </div>
+
+        <div class="strategy-section">
+            <h3 class="strategy-title"><i class="fas fa-stream"></i> Adaptive Strategy Timeline</h3>
+            <div class="gantt-container" id="gantt-chart">
+                <!-- GANTT bars injected here -->
+            </div>
+        </div>
+
+        <div class="cmd-grid">
+            <div class="cmd-col">
+                <h4><i class="fas fa-info-circle"></i> Intelligence Factor</h4>
+                <ul class="intel-list" id="intel-list">
+                    <!-- Intelligence items -->
+                </ul>
+            </div>
+            <div class="cmd-col">
+                <h4><i class="fas fa-terminal"></i> Live Status</h4>
+                <div class="terminal-window" id="cmd-terminal">
+                    <span class="term-line text-muted">Thinking...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>
+
+<style>
+    .commander-layout {
+        display: grid;
+        grid-template-columns: 350px 1fr;
+        grid-template-rows: auto 1fr;
+        gap: 20px;
+        height: calc(100vh - 100px);
+    }
+
+    .page-header.full-width {
+        grid-column: 1 / -1;
+        margin-bottom: 0;
+    }
+
+    /* Target List */
+    .target-list-panel {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .list-container {
+        flex: 1;
+        overflow-y: auto;
+        padding: 10px;
+    }
+
+    .target-item {
+        padding: 12px;
+        margin-bottom: 8px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid transparent;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .target-item:hover {
+        background: rgba(255, 255, 255, 0.08);
+    }
+
+    .target-item.active {
+        background: rgba(88, 166, 255, 0.15);
+        border-color: var(--accent-blue);
+    }
+
+    .target-main {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 4px;
+    }
+
+    .target-ssid {
+        font-weight: 600;
+        color: var(--text-primary);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 180px;
+    }
+
+    .target-meta {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.8rem;
+        color: var(--text-muted);
+    }
+
+    /* Commander View */
+    .commander-panel {
+        display: flex;
+        flex-direction: column;
+        padding: 0;
+        overflow: hidden;
+        position: relative;
+    }
+
+    .empty-state-large {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: var(--text-muted);
+        text-align: center;
+    }
+
+    .empty-state-large i {
+        font-size: 4rem;
+        opacity: 0.2;
+        margin-bottom: 1rem;
+    }
+
+    .commander-content {
+        padding: 2rem;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 2rem;
+        overflow-y: auto;
+    }
+
+    .commander-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .commander-header h2 {
+        font-size: 2rem;
+        margin: 0;
+        background: linear-gradient(90deg, #fff, #aaa);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+
+    .target-chips {
+        display: flex;
+        gap: 10px;
+        margin-top: 8px;
+    }
+
+    .chip {
+        background: rgba(255, 255, 255, 0.1);
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-size: 0.85rem;
+        font-family: 'Roboto Mono', monospace;
+    }
+
+    /* Strategy GANTT */
+    .gantt-container {
+        display: flex;
+        height: 60px;
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 8px;
+        overflow: hidden;
+        margin-top: 10px;
+        position: relative;
+    }
+
+    .gantt-bar {
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: rgba(0, 0, 0, 0.7);
+        position: relative;
+        cursor: help;
+        transition: filter 0.2s;
+        border-right: 1px solid rgba(0, 0, 0, 0.1);
+    }
+
+    .gantt-bar:hover {
+        filter: brightness(1.2);
+        z-index: 2;
+    }
+
+    .gantt-bar::after {
+        content: attr(data-tooltip);
+        position: absolute;
+        bottom: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #000;
+        color: #fff;
+        padding: 5px 10px;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        white-space: nowrap;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s;
+        margin-bottom: 5px;
+        z-index: 10;
+    }
+
+    .gantt-bar:hover::after {
+        opacity: 1;
+    }
+
+    /* Cmd Grid */
+    .cmd-grid {
+        display: grid;
+        grid-template-columns: 1fr 1.5fr;
+        gap: 20px;
+        flex: 1;
+    }
+
+    .intel-list li {
+        padding: 8px 0;
+        border-bottom: 1px solid var(--border-color);
+        font-size: 0.9rem;
+    }
+
+    .intel-list li:last-child {
+        border-bottom: none;
+    }
+
+    .terminal-window {
+        background: #0d1117;
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        padding: 10px;
+        font-family: 'Roboto Mono', monospace;
+        font-size: 0.85rem;
+        height: 200px;
+        overflow-y: auto;
+    }
+
+    .term-line {
+        display: block;
+        margin-bottom: 4px;
+    }
+
+    .term-success {
+        color: var(--accent-green);
+    }
+
+    .term-info {
+        color: var(--accent-blue);
+    }
+
+    /* Colors for GANTT */
+    .bg-semantic {
+        background: #a371f7;
+    }
+
+    .bg-vendor {
+        background: #3fb950;
+    }
+
+    .bg-year {
+        background: #d29922;
+    }
+
+    .bg-digits {
+        background: #f85149;
+    }
+
+    .bg-standard {
+        background: #58a6ff;
+    }
+
+    .bg-ape {
+        background: #cf222e;
+    }
+</style>
+
+<script>
+    let currentTarget = null;
+
+    // Global Socket Listener for Terminal (Idempotent)
+    if (typeof socket !== 'undefined' && !window.cmdListenerAttached) {
+        socket.on('cmd_log', (data) => {
+            const terminal = document.getElementById('cmd-terminal');
+            if (terminal) {
+                const cls = data.type === 'danger' ? 'text-danger' :
+                    data.type === 'success' ? 'term-success' :
+                        data.type === 'warning' ? 'text-warning' :
+                            data.type === 'system' ? 'text-muted' : 'term-info';
+
+                terminal.innerHTML += `<span class="term-line ${cls}">${data.msg}</span>`;
+                terminal.scrollTop = terminal.scrollHeight;
+
+                // Reset button if session terminates
+                if (data.msg.includes('TERMINATED') || data.msg.includes('FATAL')) {
+                    const btn = document.getElementById('btn-attack');
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fas fa-meteor"></i> LAUNCH STRATEGY';
+                    }
+                }
+            }
+        });
+        window.cmdListenerAttached = true;
+    }
+
+    async function selectTarget(ssid, bssid, priority, status, el) {
+        // UI Selection
+        document.querySelectorAll('.target-item').forEach(i => i.classList.remove('active'));
+        el.classList.add('active');
+
+        currentTarget = { ssid, bssid, priority };
+
+        // Render Template
+        const view = document.getElementById('commander-view');
+        const tmpl = document.getElementById('commander-template');
+        view.innerHTML = tmpl.innerHTML;
+
+        // Clear Terminal
+        document.getElementById('cmd-terminal').innerHTML = '<span class="term-line text-muted">Ready for command.</span>';
+
+        // Populate Header
+        document.getElementById('cmd-ssid').textContent = ssid || '[Hidden]';
+        document.getElementById('cmd-bssid').textContent = bssid;
+
+        // Fetch Plan
+        await fetchStrategy(ssid, bssid, priority);
+    }
+
+    async function fetchStrategy(ssid, bssid, priority) {
+        const terminal = document.getElementById('cmd-terminal');
+        terminal.innerHTML += `<span class="term-line term-info">> Analyzing target intelligence...</span>`;
+
+        try {
+            const res = await fetch('/api/strategy/plan', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ssid, bssid, priority })
+            });
+            const data = await res.json();
+
+            if (data.error) {
+                terminal.innerHTML += `<span class="term-line text-danger">Error: ${data.error}</span>`;
+                return;
+            }
+
+            renderGantt(data.rounds);
+            renderIntel(data.rounds);
+            terminal.innerHTML += `<span class="term-line term-success">> Strategy generated: ${data.rounds.length} stages identified.</span>`;
+            terminal.innerHTML += `<span class="term-line">> Ready to engage.</span>`;
+
+        } catch (e) {
+            console.error(e);
+            terminal.innerHTML += `<span class="term-line text-danger">System Error: ${e.message}</span>`;
+        }
+    }
+
+    function renderGantt(rounds) {
+        const container = document.getElementById('gantt-chart');
+        container.innerHTML = '';
+
+        const totalTime = rounds.reduce((acc, r) => acc + r.timeout, 0);
+
+        rounds.forEach(r => {
+            const widthPct = (r.timeout / totalTime) * 100;
+            // Min width for visibility
+            const cssWidth = Math.max(widthPct, 5);
+
+            const div = document.createElement('div');
+            div.className = `gantt-bar bg-${getStrategyColor(r.strategy)}`;
+            div.style.width = `${cssWidth}%`;
+            div.textContent = r.name;
+            div.setAttribute('data-tooltip', `${r.description} (${r.timeout}s)`);
+            container.appendChild(div);
+        });
+    }
+
+    function renderIntel(rounds) {
+        const list = document.getElementById('intel-list');
+        list.innerHTML = '';
+
+        rounds.forEach(r => {
+            const li = document.createElement('li');
+            li.innerHTML = `<strong>${r.name}:</strong> ${r.description}`;
+            list.appendChild(li);
+        });
+    }
+
+    function getStrategyColor(strategy) {
+        if (strategy.includes('semantic') || strategy.includes('custom')) return 'semantic';
+        if (strategy.includes('mask')) return 'vendor';
+        if (strategy.includes('year')) return 'year';
+        if (strategy.includes('digits')) return 'digits';
+        if (strategy.includes('standard')) return 'standard';
+        if (strategy.includes('ape')) return 'ape';
+        return 'standard';
+    }
+
+    async function startAttack() {
+        if (!confirm('Authorize strategy execution on target?')) return;
+
+        const btn = document.getElementById('btn-attack');
+        const terminal = document.getElementById('cmd-terminal');
+
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ENGAGED';
+
+        terminal.innerHTML += `<span class="term-line term-info">> Initializing Hashcat job...</span>`;
+
+        try {
+            const res = await fetch('/api/crack/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(currentTarget)
+            });
+
+            terminal.innerHTML += `<span class="term-line term-success">> JOB STARTED. Monitoring progress...</span>`;
+            // Mock progress updates would go here
+            setTimeout(() => {
+                terminal.innerHTML += `<span class="term-line">> Stage 1: Semantic analysis...</span>`;
+            }, 1000);
+
+        } catch (e) {
+            terminal.innerHTML += `<span class="term-line text-danger">Launch failed: ${e.message}</span>`;
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-meteor"></i> LAUNCH STRATEGY';
+        }
+    }
+</script>
+{% endblock %}

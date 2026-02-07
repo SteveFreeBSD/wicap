@@ -1,0 +1,915 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row header-split" style="margin-bottom: 20px;">
+    <div>
+        <h1><i class="fas fa-user-shield"></i> Admin Console</h1>
+        <p>System Management & Forensics</p>
+    </div>
+    <div>
+        <span id="system-status-indicator" class="badge">Checking...</span>
+    </div>
+</div>
+
+<!-- Tabs -->
+<div class="card" style="margin-bottom: 20px;">
+    <div style="display: flex; gap: 10px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
+        <button class="btn btn-secondary active" onclick="switchTab('captures')"><i class="fas fa-folder-open"></i>
+            Captures</button>
+        <button class="btn btn-secondary" onclick="switchTab('logs')"><i class="fas fa-scroll"></i> System Logs</button>
+        <button class="btn btn-secondary" onclick="switchTab('functions')"><i class="fas fa-bolt"></i>
+            Functions</button>
+        <button class="btn btn-secondary" onclick="switchTab('settings')"><i class="fas fa-cog"></i> Settings</button>
+    </div>
+</div>
+
+<!-- Captures Tab -->
+<div id="tab-captures" class="tab-content">
+    <div class="card">
+        <h3>Captured Files (PCAP / Handshakes)</h3>
+        <div class="table-container">
+            <table class="admin-table" id="captures-table">
+                <thead>
+                    <tr>
+                        <th>Filename</th>
+                        <th>Size</th>
+                        <th>Modified</th>
+                        <th style="text-align:right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="captures-list">
+                    <tr>
+                        <td colspan="4">Loading captures...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Functions Tab -->
+<div id="tab-functions" class="tab-content" style="display:none;">
+    <div class="row">
+        <!-- Service Control -->
+        <div class="card" style="flex: 1;">
+            <h3><i class="fas fa-robot"></i> Core Service</h3>
+            <p>Direct control over the WICAP capture engine.</p>
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button onclick="controlSystem('start')" class="btn btn-xs" style="background: var(--success-color);"><i
+                        class="fas fa-play"></i>
+                    Start Service</button>
+                <button onclick="controlSystem('restart')" class="btn btn-secondary"><i class="fas fa-sync"></i>
+                    Restart</button>
+                <button onclick="controlSystem('stop')" class="btn btn-danger"><i class="fas fa-stop"></i> Stop
+                    Service</button>
+            </div>
+            <div style="margin-top: 15px;">
+                <strong>Current Status: </strong> <span id="service-status-text">Checking...</span>
+            </div>
+        </div>
+
+        <!-- Data Ops -->
+        <div class="card" style="flex: 1;">
+            <h3><i class="fas fa-database"></i> Data Operations</h3>
+            <p>Manage session data and exports.</p>
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button onclick="exportData()" class="btn btn-secondary"><i class="fas fa-download"></i> Export
+                    JSON</button>
+                <button onclick="clearData()" class="btn btn-danger"
+                    title="Delete all captured events and handshakes"><i class="fas fa-radiation"></i> Nuclear
+                    Reset</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Logs Tab -->
+<div id="tab-logs" class="tab-content" style="display:none;">
+    <div class="card">
+        <h3>Live System Logs (wicap-core)</h3>
+        <div style="background: #0d1117; font-family: monospace; padding: 10px; height: 500px; overflow-y: scroll; border: 1px solid var(--border-color); font-size: 12px;"
+            id="log-console">
+            Fetching logs...
+        </div>
+        <div style="margin-top: 10px;">
+            <button class="btn btn-secondary" onclick="fetchLogs()"><i class="fas fa-sync"></i> Refresh Logs</button>
+        </div>
+    </div>
+</div>
+
+<!-- Settings Tab -->
+<div id="tab-settings" class="tab-content" style="display:none;">
+    <!-- Admin API Access -->
+    <div class="card" style="margin-bottom: 20px;">
+        <h3><i class="fas fa-key"></i> Admin API Access</h3>
+        <p style="color: var(--text-muted); margin-bottom: 20px;">
+            Enter the admin secret for protected endpoints. This is stored locally in your browser.
+        </p>
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <input type="password" id="admin-secret-input" placeholder="WICAP_INTERNAL_SECRET"
+                   style="flex: 1; padding: 8px; border-radius: var(--radius); border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-color);">
+            <button class="btn btn-secondary" onclick="saveAdminSecret()"><i class="fas fa-save"></i> Save</button>
+            <button class="btn btn-secondary" onclick="clearAdminSecret()"><i class="fas fa-eraser"></i> Clear</button>
+        </div>
+        <div id="admin-secret-status" style="margin-top: 10px; color: var(--text-muted);"></div>
+    </div>
+
+    <!-- Theme Customizer -->
+    <div class="card" style="margin-bottom: 20px;">
+        <h3><i class="fas fa-palette"></i> Glass Cockpit Theme</h3>
+        <p style="color: var(--text-muted); margin-bottom: 20px;">Customize the glassmorphism appearance. Changes apply
+            live and persist across sessions.</p>
+
+        <!-- Accent Colors -->
+        <div class="theme-section">
+            <h4>Accent Colors</h4>
+            <div class="theme-grid">
+                <div class="theme-control">
+                    <label>Primary Blue</label>
+                    <div class="color-picker-wrapper">
+                        <input type="color" id="theme-accent-blue" value="#58a6ff" onchange="updateTheme()">
+                        <span class="color-value">#58a6ff</span>
+                    </div>
+                </div>
+                <div class="theme-control">
+                    <label>Success Green</label>
+                    <div class="color-picker-wrapper">
+                        <input type="color" id="theme-accent-green" value="#3fb950" onchange="updateTheme()">
+                        <span class="color-value">#3fb950</span>
+                    </div>
+                </div>
+                <div class="theme-control">
+                    <label>Warning Yellow</label>
+                    <div class="color-picker-wrapper">
+                        <input type="color" id="theme-accent-yellow" value="#d29922" onchange="updateTheme()">
+                        <span class="color-value">#d29922</span>
+                    </div>
+                </div>
+                <div class="theme-control">
+                    <label>Danger Red</label>
+                    <div class="color-picker-wrapper">
+                        <input type="color" id="theme-accent-red" value="#f85149" onchange="updateTheme()">
+                        <span class="color-value">#f85149</span>
+                    </div>
+                </div>
+                <div class="theme-control">
+                    <label>Purple</label>
+                    <div class="color-picker-wrapper">
+                        <input type="color" id="theme-accent-purple" value="#a371f7" onchange="updateTheme()">
+                        <span class="color-value">#a371f7</span>
+                    </div>
+                </div>
+                <div class="theme-control">
+                    <label>Cyan</label>
+                    <div class="color-picker-wrapper">
+                        <input type="color" id="theme-accent-cyan" value="#39c5cf" onchange="updateTheme()">
+                        <span class="color-value">#39c5cf</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Glass Effects -->
+        <div class="theme-section">
+            <h4>Glass Effects</h4>
+            <div class="theme-grid">
+                <div class="theme-control full-width">
+                    <label>Blur Intensity: <span id="blur-value">12</span>px</label>
+                    <input type="range" id="theme-blur" min="0" max="30" value="12" onchange="updateTheme()">
+                </div>
+                <div class="theme-control full-width">
+                    <label>Glass Opacity: <span id="opacity-value">75</span>%</label>
+                    <input type="range" id="theme-opacity" min="30" max="95" value="75" onchange="updateTheme()">
+                </div>
+                <div class="theme-control full-width">
+                    <label>Border Glow: <span id="border-value">8</span>%</label>
+                    <input type="range" id="theme-border" min="0" max="30" value="8" onchange="updateTheme()">
+                </div>
+            </div>
+        </div>
+
+        <!-- Neon Glow -->
+        <div class="theme-section">
+            <h4>Neon Glow</h4>
+            <div class="theme-grid">
+                <div class="theme-control full-width">
+                    <label>Glow Intensity: <span id="glow-value">40</span>%</label>
+                    <input type="range" id="theme-glow" min="0" max="100" value="40" onchange="updateTheme()">
+                </div>
+                <div class="theme-control full-width">
+                    <label>Glow Radius: <span id="glow-radius-value">20</span>px</label>
+                    <input type="range" id="theme-glow-radius" min="5" max="50" value="20" onchange="updateTheme()">
+                </div>
+            </div>
+        </div>
+
+        <!-- Preview Card -->
+        <div class="theme-section">
+            <h4>Live Preview</h4>
+            <div class="theme-preview-container">
+                <div class="glass-card glow-blue theme-preview-card">
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                        <span class="status-badge status-badge--live">
+                            <span class="pulse-dot"></span>
+                            Live
+                        </span>
+                        <span class="status-badge status-badge--cracking">
+                            <span class="pulse-dot"></span>
+                            Cracking
+                        </span>
+                    </div>
+                    <div class="stat-value" style="font-size: 2rem; margin-bottom: 5px;">1,234</div>
+                    <div style="color: var(--text-muted);">Sample Metric</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div
+            style="display: flex; gap: 10px; margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border-color);">
+            <button class="btn btn-secondary" onclick="resetTheme()">
+                <i class="fas fa-undo"></i> Reset to Default
+            </button>
+            <button class="btn btn-secondary" onclick="exportTheme()">
+                <i class="fas fa-download"></i> Export Theme
+            </button>
+            <button class="btn btn-secondary" onclick="importTheme()">
+                <i class="fas fa-upload"></i> Import Theme
+            </button>
+        </div>
+    </div>
+
+    <!-- Other Settings -->
+    <div class="card">
+        <h3><i class="fas fa-cog"></i> Dashboard Settings</h3>
+        <p>Configure user preferences.</p>
+
+        <div style="margin-top: 20px;">
+            <div class="row" style="align-items: center; margin-bottom: 15px;">
+                <div style="flex: 1;">
+                    <strong>Auto-Refresh Interval</strong>
+                    <div style="font-size: 0.8rem; color: #8b949e;">How often to poll system status.</div>
+                </div>
+                <div>
+                    <select class="btn btn-secondary" id="setting-refresh" onchange="updateSettings()">
+                        <option value="1000">1s (Realtime)</option>
+                        <option value="5000" selected>5s (Normal)</option>
+                        <option value="30000">30s (Slow)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="row" style="align-items: center; margin-bottom: 15px;">
+                <div style="flex: 1;">
+                    <strong>Log History</strong>
+                    <div style="font-size: 0.8rem; color: #8b949e;">Number of lines to fetch.</div>
+                </div>
+                <div>
+                    <select class="btn btn-secondary" id="setting-loglines" disabled>
+                        <option value="100">100 lines</option>
+                        <option value="200" selected>200 lines</option>
+                        <option value="500">500 lines</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 20px 0;">
+
+        <h3><i class="fas fa-info-circle"></i> System Info</h3>
+        <table class="admin-table" style="width: auto;">
+            <tr>
+                <td style="color: #8b949e;">UI Version</td>
+                <td>v1.3.0 (Glass Cockpit)</td>
+            </tr>
+            <tr>
+                <td style="color: #8b949e;">Backend</td>
+                <td>FastAPI + PyODBC</td>
+            </tr>
+        </table>
+    </div>
+</div>
+
+<style>
+    /* Theme Customizer Styles */
+    .theme-section {
+        margin-bottom: 25px;
+        padding-bottom: 20px;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .theme-section:last-of-type {
+        border-bottom: none;
+    }
+
+    .theme-section h4 {
+        font-size: 0.9rem;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 15px;
+    }
+
+    .theme-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 15px;
+    }
+
+    @media (max-width: 900px) {
+        .theme-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+
+    .theme-control {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .theme-control.full-width {
+        grid-column: span 3;
+    }
+
+    @media (max-width: 900px) {
+        .theme-control.full-width {
+            grid-column: span 2;
+        }
+    }
+
+    .theme-control label {
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+    }
+
+    .color-picker-wrapper {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .color-picker-wrapper input[type="color"] {
+        width: 50px;
+        height: 35px;
+        border: 2px solid var(--border-color);
+        border-radius: var(--radius);
+        cursor: pointer;
+        background: transparent;
+        padding: 2px;
+    }
+
+    .color-picker-wrapper .color-value {
+        font-family: 'SF Mono', 'Roboto Mono', monospace;
+        font-size: 0.8rem;
+        color: var(--text-muted);
+    }
+
+    .theme-control input[type="range"] {
+        width: 100%;
+        height: 8px;
+        border-radius: 4px;
+        background: var(--bg-tertiary);
+        appearance: none;
+        outline: none;
+    }
+
+    .theme-control input[type="range"]::-webkit-slider-thumb {
+        appearance: none;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: var(--accent-blue);
+        cursor: pointer;
+        box-shadow: 0 0 10px rgba(88, 166, 255, 0.5);
+    }
+
+    .theme-preview-container {
+        display: flex;
+        justify-content: center;
+        padding: 30px;
+        background: var(--bg-primary);
+        border-radius: var(--radius);
+        border: 1px solid var(--border-color);
+    }
+
+    .theme-preview-card {
+        min-width: 250px;
+        text-align: center;
+    }
+</style>
+
+<script>
+    function switchTab(tabId) {
+        document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
+        document.getElementById('tab-' + tabId).style.display = 'block';
+
+        // Update active button state
+        document.querySelectorAll('.btn-secondary').forEach(b => b.classList.remove('active'));
+
+
+        if (tabId === 'logs') {
+            fetchLogs();
+        }
+        if (tabId === 'functions') {
+            updateSystemStatus();
+        }
+    }
+
+    async function updateSystemStatus() {
+        try {
+            const res = await fetch('/api/system/status');
+            const data = await res.json();
+
+            const indicator = document.getElementById('system-status-indicator');
+            const serviceText = document.getElementById('service-status-text');
+            const dot = document.querySelector('.nav-status .status-dot');
+
+            if (data.service_status === 'running') {
+                if (indicator) {
+                    indicator.textContent = 'SYSTEM ONLINE';
+                    indicator.style.background = 'var(--accent-green)';
+                    indicator.style.color = '#fff';
+                }
+                if (serviceText) {
+                    serviceText.innerHTML = '<span style="color: var(--accent-green)"><i class="fas fa-check-circle"></i> Running</span>';
+                }
+                if (dot) dot.className = 'status-dot online';
+            } else {
+                if (indicator) {
+                    indicator.textContent = data.service_status.toUpperCase();
+                    indicator.style.background = 'var(--accent-red)';
+                    indicator.style.color = '#fff';
+                }
+                if (serviceText) {
+                    serviceText.innerHTML = `<span style="color: var(--accent-red)"><i class="fas fa-times-circle"></i> ${data.service_status}</span>`;
+                }
+                if (dot) dot.className = 'status-dot';
+            }
+        } catch (e) {
+            console.error("Failed to fetch system status:", e);
+        }
+    }
+</script>
+
+<link rel="stylesheet" href="/static/css/admin.css">
+
+<script>
+    // --- UI Helpers ---
+    function setBusy(busy) {
+        document.querySelectorAll('button').forEach(btn => {
+            btn.disabled = busy;
+            if (busy) btn.classList.add('disabled');
+            else btn.classList.remove('disabled');
+        });
+        document.body.style.cursor = busy ? 'wait' : 'default';
+    }
+
+    const ADMIN_SECRET_KEY = 'wicap_admin_secret';
+
+    function getAdminSecret() {
+        return localStorage.getItem(ADMIN_SECRET_KEY) || '';
+    }
+
+    function adminHeaders() {
+        const secret = getAdminSecret();
+        return secret ? { 'X-WICAP-SECRET': secret } : {};
+    }
+
+    async function adminFetch(url, options = {}) {
+        const headers = Object.assign({}, options.headers || {}, adminHeaders());
+        const res = await fetch(url, Object.assign({}, options, { headers }));
+        if (!res.ok) {
+            let message = `Request failed (${res.status})`;
+            try {
+                const data = await res.json();
+                message = data.detail || data.error || data.message || message;
+            } catch (e) {
+                // Ignore parse errors, use default message.
+            }
+            throw new Error(message);
+        }
+        return res;
+    }
+
+    function updateAdminSecretStatus() {
+        const status = document.getElementById('admin-secret-status');
+        const secret = getAdminSecret();
+        if (!status) return;
+        if (secret) {
+            status.textContent = 'Admin secret set for this browser.';
+        } else {
+            status.textContent = 'Admin secret not set. Admin actions will be denied.';
+        }
+    }
+
+    function saveAdminSecret() {
+        const input = document.getElementById('admin-secret-input');
+        if (!input) return;
+        const secret = input.value.trim();
+        if (!secret) {
+            showToast('Enter a non-empty secret.', 'danger');
+            return;
+        }
+        localStorage.setItem(ADMIN_SECRET_KEY, secret);
+        input.value = '';
+        updateAdminSecretStatus();
+        showToast('Admin secret saved for this browser.', 'success');
+    }
+
+    function clearAdminSecret() {
+        localStorage.removeItem(ADMIN_SECRET_KEY);
+        updateAdminSecretStatus();
+        showToast('Admin secret cleared.', 'success');
+    }
+
+    // --- Functions & Controls ---
+    async function controlSystem(action) {
+        if (!confirm(`Are you sure you want to ${action.toUpperCase()} the Core Service?`)) return;
+        setBusy(true);
+        try {
+            const res = await fetch(`/api/system/control?action=${action}`, { method: 'POST' });
+            const data = await res.json();
+            showToast(data.message, data.status === 'ok' ? 'success' : 'danger');
+            updateSystemStatus();
+        } catch (e) {
+            showToast("Error: " + e, "danger");
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    async function clearData() {
+        const pin = prompt("WARNING: NUCLEAR RESET\nThis will DELETE ALL captured data.\nType 'RESET' to confirm:");
+        if (pin !== 'RESET') return;
+        setBusy(true);
+        try {
+            const res = await fetch('/api/action/clear', { method: 'POST' });
+            const data = await res.json();
+            showToast(data.message, data.status === 'ok' ? 'success' : 'danger');
+        } catch (e) {
+            showToast("Error: " + e, "danger");
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    async function analyzeCapture(filename) {
+        if (!confirm(`Run offline analysis on ${filename}? This will process the file using wicap-core.`)) return;
+        setBusy(true);
+        try {
+            const encoded = encodeURIComponent(filename);
+            const res = await adminFetch(`/api/admin/analyze/${encoded}`, { method: 'POST' });
+            const data = await res.json();
+            showToast(data.message, data.status === 'ok' ? 'success' : 'danger');
+        } catch (e) {
+            showToast("Error starting analysis: " + e, "danger");
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    async function replayCapture(filename) {
+        if (!confirm(`Replay ${filename} to the Replay Dashboard?`)) return;
+        setBusy(true);
+        try {
+            const encoded = encodeURIComponent(filename);
+            const res = await adminFetch(`/api/admin/replay/${encoded}`, { method: 'POST' });
+            const data = await res.json();
+            const msg = data.message || "Replay started. View /replay for playback.";
+            showToast(msg, data.status === 'ok' ? 'success' : 'danger');
+        } catch (e) {
+            showToast("Error starting replay: " + e, "danger");
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    async function deleteCapture(filename) {
+        if (!confirm(`Delete ${filename}?`)) return;
+        setBusy(true);
+        try {
+            const encoded = encodeURIComponent(filename);
+            await adminFetch(`/api/admin/captures/${encoded}`, { method: 'DELETE' });
+            showToast(`Deleted ${filename}`, "success");
+            loadCaptures();
+        } catch (e) {
+            showToast("Error deleting: " + e, "danger");
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    async function downloadCapture(filename) {
+        setBusy(true);
+        try {
+            const encoded = encodeURIComponent(filename);
+            const res = await adminFetch(`/api/admin/captures/${encoded}/download`);
+            const blob = await res.blob();
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+        } catch (e) {
+            showToast("Error downloading: " + e, "danger");
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    function exportData() {
+        window.location.href = '/api/action/export';
+    }
+
+    // --- Settings ---
+    function updateSettings() {
+        const rate = document.getElementById('setting-refresh').value;
+        if (typeof pollInterval !== 'undefined') clearInterval(pollInterval);
+        pollInterval = setInterval(updateSystemStatus, parseInt(rate));
+        console.log("Updated poll interval to", rate);
+    }
+
+    // --- Captures ---
+    function isReplayableCapture(name) {
+        const lower = name.toLowerCase();
+        return (
+            lower.endsWith('.pcap') ||
+            lower.endsWith('.pcapng') ||
+            lower.endsWith('.cap') ||
+            lower.endsWith('.pcap.gz') ||
+            lower.endsWith('.pcapng.gz')
+        );
+    }
+
+    async function loadCaptures() {
+        let files = [];
+        try {
+            const res = await adminFetch('/api/admin/captures');
+            files = await res.json();
+        } catch (e) {
+            showToast("Error loading captures: " + e, "danger");
+            return;
+        }
+        const tbody = document.getElementById('captures-list');
+        tbody.innerHTML = '';
+
+        files.forEach(f => {
+            const replayable = isReplayableCapture(f.name);
+            const replayButton = replayable
+                ? `<button onclick="replayCapture('${f.name}')" class="btn btn-secondary btn-sm" title="Replay to Replay Dashboard"><i class="fas fa-rotate-right"></i></button>`
+                : `<button class="btn btn-secondary btn-sm disabled" title="Replay unavailable" disabled><i class="fas fa-rotate-right"></i></button>`;
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+            <td>${f.name}</td>
+            <td>${f.size}</td>
+            <td>${f.modified}</td>
+            <td>
+                <button onclick="downloadCapture('${f.name}')" class="btn btn-secondary btn-sm" title="Download"><i class="fas fa-file-download"></i></button>
+                ${replayButton}
+                <button onclick="analyzeCapture('${f.name}')" class="btn btn-secondary btn-sm" title="Run Offline Analysis"><i class="fas fa-microscope"></i></button>
+                <button onclick="deleteCapture('${f.name}')" class="btn btn-danger btn-sm" title="Delete"><i class="fas fa-trash-alt"></i></button>
+            </td>
+        `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    // --- Logs ---
+    async function fetchLogs() {
+        let logs = [];
+        try {
+            const res = await adminFetch('/api/admin/logs');
+            logs = await res.json();
+        } catch (e) {
+            showToast("Error fetching logs: " + e, "danger");
+            return;
+        }
+        const consoleDiv = document.getElementById('log-console');
+
+        // Build Table
+        let html = '<table class="log-table">';
+        logs.forEach(log => {
+            let rowClass = '';
+            if (log.level === 'ERROR') rowClass = 'row-error';
+            if (log.level === 'WARNING') rowClass = 'row-warning';
+
+            // Highlight Icons in message (Replace common emojis with FA icons or remove)
+            // For now, let's just sanitise the box-x emojis if they appear in logs, 
+            // or trust that logs are text. The user didn't complain about logs yet.
+            // But let's replace the status emojis I know about.
+            let msg = log.message
+                .replace(/✅/g, '<i class="fas fa-check-circle text-success"></i>')
+                .replace(/⚠️/g, '<i class="fas fa-exclamation-triangle text-warning"></i>')
+                .replace(/🔥/g, '<i class="fas fa-fire text-danger"></i>')
+                .replace(/📡/g, '<i class="fas fa-wifi"></i>');
+
+            html += `<tr class="${rowClass}">
+                <td class="col-time">${log.time}</td>
+                <td class="col-service"><span class="badge badge-${log.service}">${log.service}</span></td>
+                <td class="col-msg">${msg}</td>
+            </tr>`;
+        });
+        html += '</table>';
+
+        const isScrolledToBottom = consoleDiv.scrollHeight - consoleDiv.clientHeight <= consoleDiv.scrollTop + 50;
+        consoleDiv.innerHTML = html;
+        if (isScrolledToBottom) consoleDiv.scrollTop = consoleDiv.scrollHeight;
+    }
+
+    // Init
+    updateAdminSecretStatus();
+    loadCaptures();
+    let pollInterval = setInterval(updateSystemStatus, 5000);
+    updateSystemStatus();
+
+    // =========================================================================
+    // Theme Customizer
+    // =========================================================================
+
+    const DEFAULT_THEME = {
+        'accent-blue': '#58a6ff',
+        'accent-green': '#3fb950',
+        'accent-yellow': '#d29922',
+        'accent-red': '#f85149',
+        'accent-purple': '#a371f7',
+        'accent-cyan': '#39c5cf',
+        'blur': 12,
+        'opacity': 75,
+        'border': 8,
+        'glow': 40,
+        'glow-radius': 20
+    };
+
+    function hexToRgb(hex) {
+        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        return result ? {
+            r: parseInt(result[1], 16),
+            g: parseInt(result[2], 16),
+            b: parseInt(result[3], 16)
+        } : null;
+    }
+
+    function updateTheme() {
+        const root = document.documentElement;
+
+        // Accent Colors
+        const colors = ['blue', 'green', 'yellow', 'red', 'purple', 'cyan'];
+        colors.forEach(color => {
+            const input = document.getElementById(`theme-accent-${color}`);
+            if (input) {
+                const val = input.value;
+                root.style.setProperty(`--accent-${color}`, val);
+
+                // Update color value display
+                const valueSpan = input.parentElement.querySelector('.color-value');
+                if (valueSpan) valueSpan.textContent = val;
+
+                // Update neon glow with new color
+                const rgb = hexToRgb(val);
+                if (rgb) {
+                    const glowIntensity = parseInt(document.getElementById('theme-glow')?.value || 40) / 100;
+                    const glowRadius = parseInt(document.getElementById('theme-glow-radius')?.value || 20);
+                    root.style.setProperty(`--neon-${color}`,
+                        `0 0 ${glowRadius}px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${glowIntensity})`);
+                }
+            }
+        });
+
+        // Glass Effects
+        const blur = document.getElementById('theme-blur')?.value || 12;
+        const opacity = document.getElementById('theme-opacity')?.value || 75;
+        const border = document.getElementById('theme-border')?.value || 8;
+
+        root.style.setProperty('--glass-blur', `blur(${blur}px)`);
+        root.style.setProperty('--glass-blur-strong', `blur(${parseInt(blur) + 8}px)`);
+        root.style.setProperty('--glass-bg', `rgba(22, 27, 34, ${opacity / 100})`);
+        root.style.setProperty('--glass-bg-light', `rgba(33, 38, 45, ${(opacity - 15) / 100})`);
+        root.style.setProperty('--glass-border', `1px solid rgba(255, 255, 255, ${border / 100})`);
+
+        // Update value displays
+        document.getElementById('blur-value').textContent = blur;
+        document.getElementById('opacity-value').textContent = opacity;
+        document.getElementById('border-value').textContent = border;
+
+        // Neon Glow
+        const glowIntensity = document.getElementById('theme-glow')?.value || 40;
+        const glowRadius = document.getElementById('theme-glow-radius')?.value || 20;
+
+        document.getElementById('glow-value').textContent = glowIntensity;
+        document.getElementById('glow-radius-value').textContent = glowRadius;
+
+        // Re-apply glow to all colors with new intensity/radius
+        colors.forEach(color => {
+            const input = document.getElementById(`theme-accent-${color}`);
+            if (input) {
+                const rgb = hexToRgb(input.value);
+                if (rgb) {
+                    root.style.setProperty(`--neon-${color}`,
+                        `0 0 ${glowRadius}px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${glowIntensity / 100})`);
+                }
+            }
+        });
+
+        // Save to localStorage
+        saveTheme();
+    }
+
+    function saveTheme() {
+        const theme = {
+            'accent-blue': document.getElementById('theme-accent-blue')?.value,
+            'accent-green': document.getElementById('theme-accent-green')?.value,
+            'accent-yellow': document.getElementById('theme-accent-yellow')?.value,
+            'accent-red': document.getElementById('theme-accent-red')?.value,
+            'accent-purple': document.getElementById('theme-accent-purple')?.value,
+            'accent-cyan': document.getElementById('theme-accent-cyan')?.value,
+            'blur': parseInt(document.getElementById('theme-blur')?.value),
+            'opacity': parseInt(document.getElementById('theme-opacity')?.value),
+            'border': parseInt(document.getElementById('theme-border')?.value),
+            'glow': parseInt(document.getElementById('theme-glow')?.value),
+            'glow-radius': parseInt(document.getElementById('theme-glow-radius')?.value)
+        };
+        localStorage.setItem('wicap-theme', JSON.stringify(theme));
+    }
+
+    function loadTheme() {
+        const saved = localStorage.getItem('wicap-theme');
+        const theme = saved ? JSON.parse(saved) : DEFAULT_THEME;
+
+        // Apply to inputs
+        ['blue', 'green', 'yellow', 'red', 'purple', 'cyan'].forEach(color => {
+            const input = document.getElementById(`theme-accent-${color}`);
+            if (input && theme[`accent-${color}`]) {
+                input.value = theme[`accent-${color}`];
+            }
+        });
+
+        const sliders = ['blur', 'opacity', 'border', 'glow', 'glow-radius'];
+        sliders.forEach(name => {
+            const input = document.getElementById(`theme-${name}`);
+            if (input && theme[name] !== undefined) {
+                input.value = theme[name];
+            }
+        });
+
+        // Apply theme
+        updateTheme();
+    }
+
+    function resetTheme() {
+        if (!confirm('Reset theme to default values?')) return;
+        localStorage.removeItem('wicap-theme');
+
+        // Reset inputs to defaults
+        ['blue', 'green', 'yellow', 'red', 'purple', 'cyan'].forEach(color => {
+            const input = document.getElementById(`theme-accent-${color}`);
+            if (input) input.value = DEFAULT_THEME[`accent-${color}`];
+        });
+
+        document.getElementById('theme-blur').value = DEFAULT_THEME.blur;
+        document.getElementById('theme-opacity').value = DEFAULT_THEME.opacity;
+        document.getElementById('theme-border').value = DEFAULT_THEME.border;
+        document.getElementById('theme-glow').value = DEFAULT_THEME.glow;
+        document.getElementById('theme-glow-radius').value = DEFAULT_THEME['glow-radius'];
+
+        updateTheme();
+    }
+
+    function exportTheme() {
+        const theme = localStorage.getItem('wicap-theme') || JSON.stringify(DEFAULT_THEME);
+        const blob = new Blob([theme], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'wicap-theme.json';
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    function importTheme() {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+        input.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            try {
+                const text = await file.text();
+                const theme = JSON.parse(text);
+                localStorage.setItem('wicap-theme', JSON.stringify(theme));
+                loadTheme();
+                showToast('Theme imported successfully!', 'success');
+            } catch (err) {
+                showToast('Invalid theme file: ' + err.message, 'danger');
+            }
+        };
+        input.click();
+    }
+
+    // Load saved theme on page load
+    document.addEventListener('DOMContentLoaded', loadTheme);
+</script>
+{% endblock %}

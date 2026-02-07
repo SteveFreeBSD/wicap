@@ -1,0 +1,267 @@
+{% extends "base.html" %}
+
+{% block title %}{% if data_source == 'replay' %}Replay Dashboard{% else %}Dashboard{% endif %} - WICAP{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+    <header class="page-header">
+        <div class="header-split">
+            <div>
+                <h1><i class="fas fa-chart-line"></i> Network Intelligence</h1>
+                {% if data_source == 'replay' %}
+                <p>Replay mode: PCAP playback stream (live capture excluded)</p>
+                {% else %}
+                <p>Real-time surveillance and capture status</p>
+                {% endif %}
+            </div>
+            <div>
+                <!-- System Status Indicator -->
+                <span id="system-status-badge" class="badge">Checking...</span>
+                {% if data_source == 'replay' %}
+                <span class="badge badge-replay">Replay Mode</span>
+                {% endif %}
+
+                <!-- EPS Metric -->
+                <span class="badge" style="background:#0d1117; border:1px solid #30363d;">
+                    <i class="fas fa-tachometer-alt"></i> <span id="eps-metric">0.0</span> EPS
+                </span>
+
+                <!-- Controls -->
+                <button class="btn btn-secondary" onclick="controlSystem('start')" title="Start Capture"><i
+                        class="fas fa-play"></i></button>
+                <button class="btn btn-secondary" onclick="controlSystem('stop')" title="Stop Capture"><i
+                        class="fas fa-stop"></i></button>
+                <button class="btn btn-secondary" onclick="controlSystem('restart')" title="Restart Capture"><i
+                        class="fas fa-sync"></i></button>
+
+                <div
+                    style="display:inline-block; width:1px; height:20px; background:#30363d; margin:0 8px; vertical-align:middle;">
+                </div>
+
+                <a href="/api/action/export" class="btn btn-secondary" style="margin-right: 10px;">
+                    <i class="fas fa-file-download"></i> Export JSON
+                </a>
+                <button class="btn btn-danger" hx-post="/api/action/clear"
+                    hx-confirm="Are you sure you want to delete ALL session data?" hx-swap="none">
+                    <i class="fas fa-trash-alt"></i> Clear Session
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Stats Cards -->
+    <section class="stats-grid" hx-get="/partials/stats{% if data_source != 'live' %}?source={{ data_source }}{% endif %}" hx-trigger="every 5s" hx-swap="innerHTML">
+        {% include "partials/stats.html" %}
+    </section>
+
+    <!-- Charts Row -->
+    <div class="charts-grid">
+        <section class="card chart-card">
+            <h2><i class="fas fa-chart-line"></i> Activity (Events/Min)</h2>
+            <div class="chart-container">
+                <canvas id="activityChart"></canvas>
+            </div>
+        </section>
+        <section class="card chart-card">
+            <h2><i class="fas fa-wifi"></i> Channel Spectrum</h2>
+            <div class="chart-container">
+                <canvas id="spectrumChart"></canvas>
+            </div>
+        </section>
+        <section class="card chart-card">
+            <h2><i class="fas fa-building"></i> Top Vendors</h2>
+            <div class="chart-container">
+                <canvas id="vendorChart"></canvas>
+            </div>
+        </section>
+    </div>
+
+    <!-- Two Column Layout -->
+    <div class="dashboard-grid">
+        <!-- Live Event Feed -->
+        <section class="card">
+            <h2><i class="fas fa-circle text-danger"></i> Live Events</h2>
+            <div id="event-feed" hx-get="/partials/events{% if data_source != 'live' %}?source={{ data_source }}{% endif %}" hx-trigger="every 3s" hx-swap="innerHTML">
+                {% include "partials/events.html" %}
+            </div>
+        </section>
+
+        <!-- Quick Stats -->
+        <section class="card">
+            <h2><i class="fas fa-info-circle"></i> Session Info</h2>
+            <div class="info-list">
+                <div class="info-item">
+                    <span class="label">Started</span>
+                    <span class="value">{{ now.strftime('%H:%M:%S') }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Last Event</span>
+                    <span class="value">{{ stats.get('last_event', 'N/A') }}</span>
+                </div>
+                {% if stats.get('error') %}
+                <div class="info-item error">
+                    <span class="label">Error</span>
+                    <span class="value">{{ stats.error }}</span>
+                </div>
+                {% endif %}
+            </div>
+        </section>
+    </div>
+</div>
+
+<script>
+    // Chart Configuration
+    Chart.defaults.color = '#8b949e';
+    Chart.defaults.borderColor = '#30363d';
+
+    // Activity Chart (Line)
+    const activityCtx = document.getElementById('activityChart').getContext('2d');
+    const activityChart = new Chart(activityCtx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Events',
+                data: [],
+                borderColor: '#58a6ff',
+                backgroundColor: 'rgba(88, 166, 255, 0.1)',
+                tension: 0.4,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true } }
+        }
+    });
+
+    // Spectrum Chart (Bar)
+    const spectrumCtx = document.getElementById('spectrumChart').getContext('2d');
+    const spectrumChart = new Chart(spectrumCtx, {
+        type: 'bar',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'AP Count',
+                data: [],
+                backgroundColor: '#a371f7',
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true } }
+        }
+    });
+
+    // Vendor Chart (Doughnut)
+    const vendorCtx = document.getElementById('vendorChart').getContext('2d');
+    const vendorChart = new Chart(vendorCtx, {
+        type: 'doughnut',
+        data: {
+            labels: [],
+            datasets: [{
+                data: [],
+                backgroundColor: [
+                    '#3fb950', '#d29922', '#f85149', '#58a6ff', '#a371f7', '#8b949e'
+                ],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'right', labels: { boxWidth: 12 } }
+            }
+        }
+    });
+
+    // Fetch and update chart data
+    async function updateCharts() {
+        try {
+            // Activity
+            const sourceParam = window.WICAP_DATA_SOURCE && window.WICAP_DATA_SOURCE !== 'live'
+                ? `?source=${window.WICAP_DATA_SOURCE}`
+                : '';
+            const activityRes = await fetch(`/api/charts/activity${sourceParam}`);
+            const activityData = await activityRes.json();
+            if (activityData.labels) {
+                activityChart.data.labels = activityData.labels;
+                activityChart.data.datasets[0].data = activityData.data;
+                activityChart.update();
+            }
+
+            // Spectrum
+            const spectrumRes = await fetch(`/api/charts/spectrum${sourceParam}`);
+            const spectrumData = await spectrumRes.json();
+            if (spectrumData.labels) {
+                spectrumChart.data.labels = spectrumData.labels;
+                spectrumChart.data.datasets[0].data = spectrumData.data;
+                spectrumChart.update();
+            }
+
+            // Vendors
+            const vendorRes = await fetch(`/api/charts/vendors${sourceParam}`);
+            const vendorData = await vendorRes.json();
+            if (vendorData.labels) {
+                vendorChart.data.labels = vendorData.labels;
+                vendorChart.data.datasets[0].data = vendorData.data;
+                vendorChart.update();
+            }
+        } catch (e) {
+            console.error("Chart update failed:", e);
+        }
+    }
+
+    // Update every 10 seconds
+    setInterval(updateCharts, 10000);
+    updateCharts();
+    // System Control & Status
+    async function updateSystemStatus() {
+        try {
+            const res = await fetch('/api/system/status');
+            const data = await res.json();
+
+            // Update EPS
+            document.getElementById('eps-metric').innerText = data.eps;
+
+            // Update Status Badge
+            const badge = document.getElementById('system-status-badge');
+            if (data.service_status === 'running') {
+                badge.className = 'badge badge-success';
+
+                badge.innerText = 'CAPTURING';
+            } else if (data.service_status === 'exited' || data.service_status === 'stopped') {
+                badge.className = 'badge badge-danger';
+                badge.innerText = 'STOPPED';
+            } else {
+                badge.className = 'badge';
+                badge.innerText = data.service_status.toUpperCase();
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    async function controlSystem(action) {
+        if (!confirm(`Are you sure you want to ${action.toUpperCase()} the capture core?`)) return;
+        try {
+            const res = await fetch(`/api/system/control?action=${action}`, { method: 'POST' });
+            const data = await res.json();
+            alert(data.message);
+            updateSystemStatus(); // Refresh immediately
+        } catch (e) {
+            alert("Control failed: " + e);
+        }
+    }
+
+    setInterval(updateSystemStatus, 2000);
+    updateSystemStatus();
+
+</script>
+{% endblock %}

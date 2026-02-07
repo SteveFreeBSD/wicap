@@ -1,0 +1,550 @@
+{% extends "base.html" %}
+
+{% block title %}WICAP - Sensors{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1><i class="fas fa-broadcast-tower"></i> Sensors</h1>
+    <p class="page-subtitle">Distributed capture nodes and status</p>
+</div>
+
+<div class="stats-grid" id="sensor-stats">
+    <div class="stat-card glass-card glow-green">
+        <div class="stat-value" id="stat-online">0</div>
+        <div class="stat-label">Online</div>
+    </div>
+    <div class="stat-card glass-card glow-yellow">
+        <div class="stat-value" id="stat-stale">0</div>
+        <div class="stat-label">Stale</div>
+    </div>
+    <div class="stat-card glass-card glow-red">
+        <div class="stat-value" id="stat-offline">0</div>
+        <div class="stat-label">Offline</div>
+    </div>
+    <div class="stat-card glass-card glow-blue">
+        <div class="stat-value" id="stat-total">0</div>
+        <div class="stat-label">Total</div>
+    </div>
+</div>
+
+<div class="glass-card" id="coverage-container">
+    <div class="card-header">
+        <h2><i class="fas fa-map-marked-alt"></i> Coverage Map</h2>
+        <div class="header-actions">
+            <span class="coverage-meta" id="coverage-meta">0/0 plotted</span>
+        </div>
+    </div>
+    <div class="coverage-grid">
+        <div id="coverage-map" class="coverage-map">
+            <div class="coverage-empty" id="coverage-empty">
+                <i class="fas fa-map"></i>
+                No sensors with coordinate locations yet.
+            </div>
+        </div>
+        <div class="coverage-sidebar">
+            <div class="coverage-section">
+                <h3>Status Legend</h3>
+                <div class="legend-row"><span class="legend-dot online"></span> Online</div>
+                <div class="legend-row"><span class="legend-dot stale"></span> Stale</div>
+                <div class="legend-row"><span class="legend-dot offline"></span> Offline</div>
+            </div>
+            <div class="coverage-section">
+                <h3>Missing Coordinates</h3>
+                <div id="coverage-missing" class="coverage-missing"></div>
+            </div>
+            <div class="coverage-hint">
+                Use `location` as `lat,lon` (example: `47.6205,-122.3493`) to appear on the map.
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="glass-card" id="sensors-container">
+    <div class="card-header">
+        <h2><i class="fas fa-satellite-dish"></i> Sensor Registry</h2>
+        <div class="header-actions">
+            <button class="btn btn-primary" onclick="refreshSensors()">
+                <i class="fas fa-sync-alt"></i> Refresh
+            </button>
+        </div>
+    </div>
+    <div class="table-responsive">
+        <table class="data-table" id="sensors-table">
+            <thead>
+                <tr>
+                    <th>Status</th>
+                    <th>Sensor</th>
+                    <th>Interface</th>
+                    <th>Location</th>
+                    <th>Last Seen</th>
+                    <th>Frames</th>
+                    <th>Alerts</th>
+                    <th>Events</th>
+                </tr>
+            </thead>
+            <tbody id="sensors-tbody">
+                <tr>
+                    <td colspan="8" class="empty-state">
+                        <i class="fas fa-spinner fa-spin"></i> Loading sensors...
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<style>
+    .page-header {
+        margin-bottom: 2rem;
+    }
+
+    .page-header h1 {
+        font-size: 1.75rem;
+        margin-bottom: 0.5rem;
+        color: var(--accent-cyan);
+    }
+
+    .page-subtitle {
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+    }
+
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
+
+    .stat-card {
+        padding: 1.25rem;
+        text-align: center;
+    }
+
+    .stat-value {
+        font-size: 2rem;
+        font-weight: 700;
+        font-family: 'JetBrains Mono', monospace;
+    }
+
+    .stat-label {
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .coverage-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr);
+        gap: 1rem;
+        padding: 1rem;
+    }
+
+    .coverage-map {
+        position: relative;
+        min-height: 320px;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        overflow: hidden;
+        background:
+            linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px) 0 0 / 40px 40px,
+            linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px) 0 0 / 40px 40px,
+            radial-gradient(circle at center, rgba(88, 166, 255, 0.08), transparent 70%);
+    }
+
+    .coverage-empty {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+        text-align: center;
+        padding: 1rem;
+    }
+
+    .coverage-sidebar {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .coverage-section h3 {
+        margin: 0 0 0.5rem 0;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--text-secondary);
+    }
+
+    .legend-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.85rem;
+        margin-bottom: 0.35rem;
+    }
+
+    .legend-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        display: inline-block;
+    }
+
+    .legend-dot.online {
+        background: var(--accent-green);
+    }
+
+    .legend-dot.stale {
+        background: var(--accent-yellow);
+    }
+
+    .legend-dot.offline {
+        background: var(--accent-red);
+    }
+
+    .coverage-hint {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+        border-top: 1px solid var(--border-color);
+        padding-top: 0.75rem;
+    }
+
+    .coverage-meta {
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+    }
+
+    .coverage-missing {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        max-height: 160px;
+        overflow: auto;
+    }
+
+    .missing-row {
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+    }
+
+    .missing-row.muted {
+        opacity: 0.6;
+    }
+
+    .sensor-marker {
+        position: absolute;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+    }
+
+    .sensor-marker::after {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        border: 1px dashed currentColor;
+        transform: translate(-50%, -50%);
+        opacity: 0.35;
+    }
+
+    .sensor-marker.online {
+        background: var(--accent-green);
+        color: var(--accent-green);
+        box-shadow: 0 0 8px var(--neon-green);
+    }
+
+    .sensor-marker.stale {
+        background: var(--accent-yellow);
+        color: var(--accent-yellow);
+        box-shadow: 0 0 8px var(--neon-yellow);
+    }
+
+    .sensor-marker.offline {
+        background: var(--accent-red);
+        color: var(--accent-red);
+        box-shadow: 0 0 8px var(--neon-red);
+        opacity: 0.8;
+    }
+
+    .card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .card-header h2 {
+        font-size: 1.1rem;
+        margin: 0;
+    }
+
+    .table-responsive {
+        overflow-x: auto;
+    }
+
+    .data-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .data-table th,
+    .data-table td {
+        padding: 0.75rem 1rem;
+        text-align: left;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .data-table th {
+        background: var(--glass-bg-light);
+        font-weight: 600;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        color: var(--text-secondary);
+    }
+
+    .data-table tbody tr:hover {
+        background: rgba(255, 255, 255, 0.02);
+    }
+
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.25rem 0.6rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+
+    .status-online {
+        color: var(--accent-green);
+        border: 1px solid var(--accent-green);
+        background: rgba(34, 197, 94, 0.15);
+    }
+
+    .status-stale {
+        color: var(--accent-yellow);
+        border: 1px solid var(--accent-yellow);
+        background: rgba(245, 158, 11, 0.15);
+    }
+
+    .status-offline {
+        color: var(--accent-red);
+        border: 1px solid var(--accent-red);
+        background: rgba(239, 68, 68, 0.15);
+    }
+
+    .mono {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.85rem;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 3rem !important;
+        color: var(--text-secondary);
+    }
+
+    @media (max-width: 900px) {
+        .coverage-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+<script>
+    let sensorsData = [];
+
+    function parseLocationCoords(sensor) {
+        if (!sensor) return null;
+        const lat = sensor.location_lat;
+        const lon = sensor.location_lon;
+        if (Number.isFinite(lat) && Number.isFinite(lon)) {
+            return { lat, lon };
+        }
+        if (!sensor.location) return null;
+        const match = sensor.location.trim().match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/);
+        if (!match) return null;
+        return { lat: parseFloat(match[1]), lon: parseFloat(match[2]) };
+    }
+
+    function coverageStatus(sensor, nowTs) {
+        const age = sensor.last_heartbeat ? Math.max(0, nowTs - sensor.last_heartbeat) : 9999;
+        if (sensor.status === 'offline') return { css: 'offline', label: 'Offline' };
+        if (age > 120) return { css: 'stale', label: 'Stale' };
+        return { css: 'online', label: 'Online' };
+    }
+
+    function statusClass(status, lastSeenAgeSec) {
+        if (status === 'offline') return 'status-offline';
+        if (lastSeenAgeSec > 120) return 'status-stale';
+        return 'status-online';
+    }
+
+    async function refreshSensors() {
+        try {
+            const response = await fetch('/api/sensors');
+            const data = await response.json();
+            sensorsData = data.sensors || [];
+            const nowTs = data.now_ts || (Date.now() / 1000);
+            renderSensors(nowTs);
+            updateStats(nowTs);
+            renderCoverageMap(nowTs);
+        } catch (error) {
+            console.error('Failed to fetch sensors:', error);
+            showToast('Failed to load sensors', 'danger');
+        }
+    }
+
+    function renderCoverageMap(nowTs) {
+        const mapEl = document.getElementById('coverage-map');
+        const emptyEl = document.getElementById('coverage-empty');
+        const missingEl = document.getElementById('coverage-missing');
+        const metaEl = document.getElementById('coverage-meta');
+        if (!mapEl || !emptyEl || !missingEl || !metaEl) return;
+
+        mapEl.querySelectorAll('.sensor-marker').forEach(marker => marker.remove());
+
+        const mapped = [];
+        const missing = [];
+        sensorsData.forEach(sensor => {
+            const coords = parseLocationCoords(sensor);
+            if (!coords) {
+                missing.push(sensor);
+                return;
+            }
+            mapped.push({ sensor, coords });
+        });
+
+        metaEl.textContent = `${mapped.length}/${sensorsData.length} plotted`;
+        emptyEl.style.display = mapped.length === 0 ? 'flex' : 'none';
+
+        missingEl.innerHTML = '';
+        if (missing.length === 0) {
+            const row = document.createElement('div');
+            row.className = 'missing-row muted';
+            row.textContent = 'All sensors have coordinates.';
+            missingEl.appendChild(row);
+        } else {
+            missing.forEach(sensor => {
+                const row = document.createElement('div');
+                row.className = 'missing-row';
+                row.textContent = sensor.name || sensor.sensor_id;
+                missingEl.appendChild(row);
+            });
+        }
+
+        if (mapped.length === 0) return;
+
+        const lons = mapped.map(item => item.coords.lon);
+        const lats = mapped.map(item => item.coords.lat);
+        const minLon = Math.min(...lons);
+        const maxLon = Math.max(...lons);
+        const minLat = Math.min(...lats);
+        const maxLat = Math.max(...lats);
+        const spanLon = maxLon - minLon;
+        const spanLat = maxLat - minLat;
+        const width = mapEl.clientWidth || 1;
+        const height = mapEl.clientHeight || 1;
+        const pad = 24;
+        const usableWidth = Math.max(1, width - pad * 2);
+        const usableHeight = Math.max(1, height - pad * 2);
+
+        mapped.forEach(item => {
+            const status = coverageStatus(item.sensor, nowTs);
+            const xNorm = spanLon === 0 ? 0.5 : (item.coords.lon - minLon) / spanLon;
+            const yNorm = spanLat === 0 ? 0.5 : (maxLat - item.coords.lat) / spanLat;
+            const x = pad + (xNorm * usableWidth);
+            const y = pad + (yNorm * usableHeight);
+            const marker = document.createElement('div');
+            marker.className = `sensor-marker ${status.css}`;
+            marker.style.left = `${x}px`;
+            marker.style.top = `${y}px`;
+            const label = item.sensor.name || item.sensor.sensor_id;
+            const lastSeen = item.sensor.last_heartbeat
+                ? new Date(item.sensor.last_heartbeat * 1000).toLocaleString()
+                : 'Unknown';
+            marker.setAttribute(
+                'data-tooltip',
+                `${label} | ${status.label} | last ${lastSeen}`
+            );
+            mapEl.appendChild(marker);
+        });
+    }
+
+    function renderSensors(nowTs) {
+        const tbody = document.getElementById('sensors-tbody');
+
+        if (sensorsData.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="8" class="empty-state">
+                        <i class="fas fa-satellite"></i>
+                        No sensors registered
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        tbody.innerHTML = sensorsData.map(sensor => {
+            const lastSeen = sensor.last_heartbeat ? new Date(sensor.last_heartbeat * 1000).toLocaleString() : 'Unknown';
+            const age = sensor.last_heartbeat ? Math.max(0, nowTs - sensor.last_heartbeat) : 9999;
+            const badgeClass = statusClass(sensor.status, age);
+            const statusLabel = sensor.status === 'offline' ? 'Offline' : (age > 120 ? 'Stale' : 'Online');
+
+            return `
+                <tr>
+                    <td>
+                        <span class="status-badge ${badgeClass}">
+                            <i class="fas fa-circle"></i> ${statusLabel}
+                        </span>
+                    </td>
+                    <td class="mono">${sensor.name || sensor.sensor_id}</td>
+                    <td class="mono">${sensor.interface || '-'}</td>
+                    <td>${sensor.location || '-'}</td>
+                    <td class="mono">${lastSeen}</td>
+                    <td class="mono">${(sensor.frames_received || 0).toLocaleString()}</td>
+                    <td class="mono">${(sensor.alerts_received || 0).toLocaleString()}</td>
+                    <td class="mono">${(sensor.events_received || 0).toLocaleString()}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    function updateStats(nowTs) {
+        let online = 0, stale = 0, offline = 0;
+        sensorsData.forEach(sensor => {
+            const age = sensor.last_heartbeat ? Math.max(0, nowTs - sensor.last_heartbeat) : 9999;
+            if (sensor.status === 'offline') {
+                offline++;
+            } else if (age > 120) {
+                stale++;
+            } else {
+                online++;
+            }
+        });
+
+        document.getElementById('stat-online').textContent = online;
+        document.getElementById('stat-stale').textContent = stale;
+        document.getElementById('stat-offline').textContent = offline;
+        document.getElementById('stat-total').textContent = sensorsData.length;
+    }
+
+    document.addEventListener('DOMContentLoaded', refreshSensors);
+    setInterval(refreshSensors, 20000);
+</script>
+{% endblock %}

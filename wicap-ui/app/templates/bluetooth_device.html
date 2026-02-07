@@ -1,0 +1,596 @@
+{% extends "base.html" %}
+
+{% block title %}Bluetooth Device - {{ device.addr }}{% endblock %}
+
+{% block content %}
+<div class="dashboard bt-dossier">
+    <header class="page-header bt-dossier-header">
+        <div class="header-split bt-header-split">
+            <div>
+                <h1><i class="fab fa-bluetooth-b"></i> Bluetooth Device</h1>
+                <div class="bt-dossier-meta">
+                    <span class="badge badge-neutral">Address <span class="mono">{{ device.addr }}</span></span>
+                    {% if device.local_name %}
+                    <span class="badge badge-neutral">Name <span class="mono">{{ device.local_name }}</span></span>
+                    {% endif %}
+                </div>
+                {% if device.local_name %}
+                <p class="text-secondary small bt-section-note">Sanitized local name ready for attribution and repeat-presence tracking.</p>
+                {% endif %}
+            </div>
+            <div class="vendor-badge bt-vendor-badge">
+                {{ device.vendor }}
+            </div>
+        </div>
+        {% if error %}
+        <div class="alert alert-warning bt-alert-warning">
+            <i class="fas fa-exclamation-triangle"></i> {{ error }}
+        </div>
+        {% endif %}
+    </header>
+
+    <div class="dashboard-grid device-grid bt-dossier-grid">
+        <!-- Metadata Card -->
+        <section class="glass-card bt-dossier-card">
+            <h2><i class="fas fa-info-circle"></i> Identity</h2>
+            <div class="info-list">
+                <div class="info-item">
+                    <span class="label">Vendor</span>
+                    <span class="value">{{ device.vendor }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Address Type</span>
+                    <span class="value">{{ device.addr_type or 'Unknown' }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Confidence</span>
+                    <span class="value">{{ device.confidence_score }}% ({{ (device.confidence_tier or 'low')|upper }})</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Address Stability</span>
+                    <span class="value">{{ 'Private / Randomized' if device.is_randomized else 'Public / Static or Unknown' }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Manufacturer Hash</span>
+                    <span class="value mono">{{ device.manufacturer_data_hash or 'N/A' }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Total Observations</span>
+                    <span class="value">{{ device.total_observations }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">First Seen</span>
+                    <span class="value">{{ device.first_seen.strftime('%Y-%m-%d %H:%M:%S') if device.first_seen else
+                        'N/A' }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Last Seen</span>
+                    <span class="value">{{ device.last_seen.strftime('%Y-%m-%d %H:%M:%S') if device.last_seen else 'N/A'
+                        }}</span>
+                </div>
+            </div>
+            <p class="text-secondary small bt-section-note">
+                Why this matters: {{ device.why_matters }}
+            </p>
+            {% if device.confidence_highlights %}
+            <ul class="text-secondary small bt-highlight-list">
+                {% for item in device.confidence_highlights %}
+                <li>{{ item }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+        </section>
+
+        <!-- Signal History -->
+        <section class="glass-card bt-dossier-card">
+            <h2><i class="fas fa-signal"></i> Signal Profiler</h2>
+            <div class="chart-container bt-chart-sm">
+                <canvas id="signalChart"></canvas>
+            </div>
+        </section>
+
+        <!-- RSSI Summary -->
+        <section class="glass-card bt-dossier-card">
+            <h2><i class="fas fa-broadcast-tower"></i> RSSI Summary</h2>
+            <div class="info-list">
+                <div class="info-item">
+                    <span class="label">Average</span>
+                    <span class="value">
+                        {{ device.rssi_avg if device.rssi_avg is not none else 'N/A' }}{% if device.rssi_avg is not
+                        none %} dBm{% endif %}
+                    </span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Max</span>
+                    <span class="value">
+                        {{ device.rssi_max if device.rssi_max is not none else 'N/A' }}{% if device.rssi_max is not
+                        none %} dBm{% endif %}
+                    </span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Last</span>
+                    <span class="value">
+                        {{ device.rssi_last if device.rssi_last is not none else 'N/A' }}{% if device.rssi_last is not
+                        none %} dBm{% endif %}
+                    </span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Samples</span>
+                    <span class="value">{{ device.rssi_sample_count }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Last Seen</span>
+                    <span class="value">
+                        {{ device.rssi_last_seen.strftime('%Y-%m-%d %H:%M:%S') if device.rssi_last_seen else 'N/A' }}
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Behavior -->
+        <section class="glass-card bt-dossier-card">
+            <h2><i class="fas fa-wave-square"></i> Behavior</h2>
+            <div class="info-list">
+                <div class="info-item">
+                    <span class="label">Pattern</span>
+                    <span class="value">{{ (device.behavior_label or 'sparse')|upper }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Dwell</span>
+                    <span class="value">{{ device.dwell_minutes }} min</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Activity Rate</span>
+                    <span class="value">{{ device.observation_rate_per_hour }} obs/hour</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Rotation Risk</span>
+                    <span class="value">{{ device.rotation_risk_score }}/100</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Median Interval</span>
+                    <span class="value">{{ device.interval_median_sec if device.interval_median_sec is not none else 'N/A' }}{% if device.interval_median_sec is not none %} s{% endif %}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Interval Jitter</span>
+                    <span class="value">{{ device.interval_jitter_sec if device.interval_jitter_sec is not none else 'N/A' }}{% if device.interval_jitter_sec is not none %} s{% endif %}</span>
+                </div>
+            </div>
+            <p class="text-secondary small bt-section-note">
+                {{ device.behavior_summary }}
+            </p>
+        </section>
+
+        <!-- Rotation Correlation -->
+        <section class="glass-card bt-dossier-card">
+            <h2><i class="fas fa-random"></i> Rotation Correlation</h2>
+            <div class="info-list">
+                <div class="info-item">
+                    <span class="label">Cluster Size</span>
+                    <span class="value">{{ device.rotation_cluster_size }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Peer Addresses</span>
+                    <span class="value">{{ device.rotation_peer_count }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Suspected Rotation</span>
+                    <span class="value">{{ 'Yes' if device.rotation_suspected else 'No' }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Correlation Score</span>
+                    <span class="value">{{ device.rotation_correlation_score }}/100</span>
+                </div>
+            </div>
+            <p class="text-secondary small bt-section-note">
+                {{ device.rotation_summary }}
+            </p>
+            <div class="table-container bt-table-container">
+                <table class="data-table bt-data-table">
+                    <thead>
+                        <tr>
+                            <th>Address</th>
+                            <th>Vendor</th>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Last Seen</th>
+                            <th>Score</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for related in device.rotation_related %}
+                        <tr>
+                            <td class="mono"><a href="/bluetooth/{{ related.addr }}" class="bt-device-link">{{ related.addr }}</a></td>
+                            <td>{{ related.vendor or 'Unknown' }}</td>
+                            <td>{{ related.name or '-' }}</td>
+                            <td>{{ related.addr_type or '-' }}</td>
+                            <td class="mono">{{ related.last_seen.strftime('%Y-%m-%d %H:%M:%S') if related.last_seen else 'N/A' }}</td>
+                            <td>{{ related.rotation_correlation_score or 0 }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="6" class="text-muted">No correlated addresses observed</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Timeline + Recurrence -->
+        <section class="glass-card bt-dossier-card">
+            <h2><i class="fas fa-chart-line"></i> Timeline &amp; Recurrence</h2>
+            <div class="info-list">
+                <div class="info-item">
+                    <span class="label">Recurrence Label</span>
+                    <span class="value">{{ (device.recurrence_label or 'sparse')|upper }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Recurrence Score</span>
+                    <span class="value">{{ device.recurrence_score }}/100</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Handoff Windows</span>
+                    <span class="value">{{ device.recurrence_handoff_count }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Peer Presence Ratio</span>
+                    <span class="value">{{ device.recurrence_peer_presence_ratio }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Window</span>
+                    <span class="value">{{ device.timeline_window_minutes }} min</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Bucket</span>
+                    <span class="value">{{ device.timeline_bucket_minutes }} min</span>
+                </div>
+            </div>
+            <p class="text-secondary small bt-section-note">
+                {{ device.recurrence_summary }}
+            </p>
+            <div class="chart-container bt-chart-md">
+                <canvas id="timelineChart"></canvas>
+            </div>
+            <div class="table-container bt-table-container">
+                <table class="data-table bt-data-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Type</th>
+                            <th>Severity</th>
+                            <th>Summary</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for anomaly in device.timeline_anomalies %}
+                        <tr>
+                            <td class="mono">{{ (anomaly.timestamp or 'N/A')|replace('T', ' ') }}</td>
+                            <td><span class="badge badge-neutral">{{ anomaly.type or '-' }}</span></td>
+                            <td>{{ anomaly.severity or '-' }}</td>
+                            <td>{{ anomaly.summary or '-' }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="4" class="text-muted">No abrupt behavior/rotation shifts detected in current window</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Services -->
+        <section class="glass-card bt-dossier-card">
+            <h2><i class="fas fa-layer-group"></i> Services</h2>
+            <p class="text-secondary small">Known/mapped advertised services:</p>
+            <div class="tag-cloud bt-service-tags">
+                {% for svc in device.services %}
+                <span class="badge badge-warning">{{ svc }}</span>
+                {% else %}
+                <span class="text-muted">No services observed</span>
+                {% endfor %}
+            </div>
+            {% if device.service_unknown_count %}
+            <p class="text-secondary small bt-section-note">
+                Fingerprint UUIDs hidden from list: {{ device.service_unknown_count }} (vendor/member-assigned IDs used for correlation)
+            </p>
+            {% endif %}
+        </section>
+    </div>
+
+    <!-- Connections -->
+    <section class="glass-card bt-dossier-card mt-2">
+        <h2><i class="fas fa-link"></i> Connections</h2>
+        <div class="table-container bt-table-container">
+            <table class="data-table bt-data-table">
+                <thead>
+                    <tr>
+                        <th>Peer</th>
+                        <th>Access Address</th>
+                        <th>First Seen</th>
+                        <th>Last Seen</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for conn in connections %}
+                    <tr>
+                        <td class="mono">{{ conn.peer_addr or '-' }}</td>
+                        <td class="mono">{{ conn.access_address or '-' }}</td>
+                        <td class="mono">
+                            {{ conn.first_seen.strftime('%Y-%m-%d %H:%M:%S') if conn.first_seen else 'N/A' }}
+                        </td>
+                        <td class="mono">
+                            {{ conn.last_seen.strftime('%Y-%m-%d %H:%M:%S') if conn.last_seen else 'N/A' }}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="4" class="text-muted">No connections recorded</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- Recent Observations -->
+    <section class="glass-card bt-dossier-card mt-2">
+        <h2><i class="fas fa-history"></i> Recent Observations</h2>
+        <div class="table-container bt-table-container">
+            <table class="data-table bt-data-table">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Type</th>
+                        <th>Ch</th>
+                        <th>RSSI</th>
+                        <th>Name</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for obs in observations %}
+                    <tr>
+                        <td class="mono">{{ obs.timestamp.strftime('%H:%M:%S') if obs.timestamp else 'N/A' }}</td>
+                        <td><span class="badge badge-neutral">{{ obs.adv_type or 'adv' }}</span></td>
+                        <td>{{ obs.channel or '-' }}</td>
+                        <td class="{{ 'rssi-strong' if obs.rssi and obs.rssi|int >= -60 else 'rssi-weak' }}">
+                            {{ obs.rssi if obs.rssi is not none else '-' }} dBm
+                        </td>
+                        <td>{{ obs.local_name or '-' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="text-muted">No observations recorded</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- Evidence -->
+    <section class="glass-card bt-dossier-card mt-2">
+        <div class="card-header">
+            <h2><i class="fas fa-clipboard-check"></i> Evidence</h2>
+            <div class="header-filters">
+                <select id="ble-evidence-type" class="btn btn-secondary btn-sm" onchange="renderBleEvidence()">
+                    <option value="">All Types</option>
+                </select>
+                <select id="ble-evidence-severity" class="btn btn-secondary btn-sm" onchange="renderBleEvidence()">
+                    <option value="">All Severities</option>
+                    <option value="5">5</option>
+                    <option value="4">4</option>
+                    <option value="3">3</option>
+                    <option value="2">2</option>
+                    <option value="1">1</option>
+                </select>
+            </div>
+        </div>
+        <div class="table-container bt-table-container">
+            <table class="data-table bt-data-table">
+                <thead>
+                    <tr>
+                        <th>Type</th>
+                        <th>Severity</th>
+                        <th>Summary</th>
+                        <th>Last Seen</th>
+                    </tr>
+                </thead>
+                <tbody id="ble-evidence-body"></tbody>
+            </table>
+        </div>
+    </section>
+</div>
+
+<script>
+    Chart.defaults.color = '#8b949e';
+    Chart.defaults.borderColor = '#30363d';
+
+    const signalCtx = document.getElementById('signalChart').getContext('2d');
+    const rawData = [
+        {% for obs in observations %}
+    { t: "{{ obs.timestamp.isoformat() if obs.timestamp else '' }}", y: {{ obs.rssi if obs.rssi is not none else 'null' }} },
+    {% endfor %}
+    ].reverse().filter(p => p.y !== null);
+
+    const signalChart = new Chart(signalCtx, {
+        type: 'line',
+        data: {
+            datasets: [{
+                label: 'RSSI (dBm)',
+                data: rawData.map(p => p.y),
+                labels: rawData.map(p => p.t),
+                borderColor: '#8b5cf6',
+                backgroundColor: 'rgba(139, 92, 246, 0.15)',
+                borderWidth: 2,
+                tension: 0.4,
+                pointRadius: 2,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { display: false },
+                y: {
+                    max: -20,
+                    min: -95,
+                    grid: { color: '#30363d' }
+                }
+            }
+        }
+    });
+
+    const timelineData = {{ (device.timeline_buckets or [])|tojson }};
+    const timelineCtxEl = document.getElementById('timelineChart');
+    if (timelineCtxEl) {
+        const timelineCtx = timelineCtxEl.getContext('2d');
+        const timelineLabels = timelineData.map(row => row.bucket_start || '');
+        const primaryCounts = timelineData.map(row => Number(row.primary_count || 0));
+        const peerCounts = timelineData.map(row => Number(row.peer_count || 0));
+        new Chart(timelineCtx, {
+            data: {
+                labels: timelineLabels,
+                datasets: [
+                    {
+                        type: 'bar',
+                        label: 'Correlated Peers',
+                        data: peerCounts,
+                        backgroundColor: 'rgba(245, 158, 11, 0.35)',
+                        borderColor: '#f59e0b',
+                        borderWidth: 1,
+                    },
+                    {
+                        type: 'line',
+                        label: 'Primary Address',
+                        data: primaryCounts,
+                        borderColor: '#22c55e',
+                        backgroundColor: 'rgba(34, 197, 94, 0.15)',
+                        borderWidth: 2,
+                        tension: 0.25,
+                        pointRadius: 1.5,
+                        fill: false,
+                    },
+                ],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: true } },
+                scales: {
+                    x: { display: false },
+                    y: {
+                        beginAtZero: true,
+                        grid: { color: '#30363d' },
+                        ticks: { precision: 0 },
+                    },
+                },
+            },
+        });
+    }
+
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function sanitizeDisplayText(value, maxLen = 200) {
+        if (value === null || value === undefined) {
+            return '';
+        }
+        const raw = String(value);
+        const normalized = typeof raw.normalize === 'function' ? raw.normalize('NFKC') : raw;
+        const withoutControls = normalized
+            .replace(/\uFFFD/g, ' ')
+            .replace(/[\u0000-\u001F\u007F-\u009F]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+        if (!withoutControls) {
+            return '';
+        }
+        const ascii = typeof withoutControls.normalize === 'function'
+            ? withoutControls.normalize('NFKD').replace(/[^\x20-\x7E]/g, '')
+            : withoutControls;
+        return ascii.slice(0, maxLen).trim();
+    }
+
+    const bleEvidence = [
+        {% for alert in alerts %}
+        {
+            type: {{ (alert.alert_type or '')|tojson }},
+            severity: {{ alert.severity or 0 }},
+            summary: {{ (alert.description or alert.title or '')|tojson }},
+            last_seen: {{ (alert.last_seen.strftime('%Y-%m-%d %H:%M:%S') if alert.last_seen else '')|tojson }},
+            ts_epoch: {{ (alert.ts_epoch or '')|tojson }},
+        },
+        {% endfor %}
+    ];
+
+    function renderBleEvidenceFilters() {
+        const typeSelect = document.getElementById('ble-evidence-type');
+        const severitySelect = document.getElementById('ble-evidence-severity');
+        const currentType = typeSelect.value;
+        const types = [...new Set(
+            bleEvidence
+                .map(e => sanitizeDisplayText(e.type, 72))
+                .filter(Boolean)
+        )].sort();
+        typeSelect.innerHTML = '<option value="">All Types</option>' + types.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
+        typeSelect.value = types.includes(currentType) ? currentType : '';
+
+        if (!severitySelect.value) {
+            severitySelect.value = '';
+        }
+    }
+
+    function renderBleEvidence() {
+        const body = document.getElementById('ble-evidence-body');
+        if (!bleEvidence.length) {
+            body.innerHTML = '<tr><td colspan="4" class="text-muted">No BLE evidence recorded</td></tr>';
+            return;
+        }
+
+        const typeFilter = document.getElementById('ble-evidence-type').value;
+        const severityFilter = document.getElementById('ble-evidence-severity').value;
+
+        let filtered = bleEvidence.slice();
+        if (typeFilter) {
+            filtered = filtered.filter(e => sanitizeDisplayText(e.type, 72) === typeFilter);
+        }
+        if (severityFilter) {
+            filtered = filtered.filter(e => String(e.severity) === severityFilter);
+        }
+
+        if (!filtered.length) {
+            body.innerHTML = '<tr><td colspan="4" class="text-muted">No evidence matches the filters</td></tr>';
+            return;
+        }
+
+        body.innerHTML = filtered.map(e => {
+            const typeText = sanitizeDisplayText(e.type, 72) || '-';
+            const summaryText = sanitizeDisplayText(e.summary, 260) || '-';
+            const tsRaw = e.last_seen || e.ts_epoch || '-';
+            const ts = sanitizeDisplayText(tsRaw, 96) || '-';
+            const severityText = (e.severity === null || e.severity === undefined || e.severity === '') ? '-' : String(e.severity);
+            return `
+                <tr>
+                    <td><span class="badge badge-neutral">${escapeHtml(typeText)}</span></td>
+                    <td>${escapeHtml(severityText)}</td>
+                    <td>${escapeHtml(summaryText)}</td>
+                    <td class="mono">${escapeHtml(ts)}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    renderBleEvidenceFilters();
+    renderBleEvidence();
+</script>
+{% endblock %}

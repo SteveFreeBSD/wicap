@@ -1,0 +1,619 @@
+{% extends "base.html" %}
+
+{% block title %}WICAP - Security Alerts{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1><i class="fas fa-shield-alt"></i> Security Alerts</h1>
+    <p class="page-subtitle">WIDS (Wireless Intrusion Detection System) alerts and security events</p>
+</div>
+
+<div class="stats-grid" id="alert-stats">
+    <div class="stat-card glass-card glow-red">
+        <div class="stat-value" id="stat-critical">0</div>
+        <div class="stat-label">Critical</div>
+    </div>
+    <div class="stat-card glass-card glow-yellow">
+        <div class="stat-value" id="stat-high">0</div>
+        <div class="stat-label">High</div>
+    </div>
+    <div class="stat-card glass-card glow-blue">
+        <div class="stat-value" id="stat-medium">0</div>
+        <div class="stat-label">Medium</div>
+    </div>
+    <div class="stat-card glass-card glow-green">
+        <div class="stat-value" id="stat-total">0</div>
+        <div class="stat-label">Total</div>
+    </div>
+</div>
+
+<div class="glass-card" id="alerts-filters">
+    <div class="filters-row">
+        <div class="filter-group">
+            <label for="filter-source">Source</label>
+            <select id="filter-source" class="filter-select">
+                <option value="all">All</option>
+                <option value="wids">WIDS</option>
+                <option value="anomaly">Anomaly</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label for="filter-limit">Limit</label>
+            <select id="filter-limit" class="filter-select">
+                <option value="50">50</option>
+                <option value="100" selected>100</option>
+                <option value="200">200</option>
+                <option value="500">500</option>
+            </select>
+        </div>
+        <div class="filter-group filter-checkbox">
+            <label>
+                <input type="checkbox" id="filter-acknowledged" />
+                Show acknowledged
+            </label>
+        </div>
+    </div>
+</div>
+
+<div class="glass-card" id="alerts-container">
+    <div class="card-header">
+        <h2><i class="fas fa-exclamation-triangle"></i> Active Alerts</h2>
+        <div class="header-actions">
+            <button class="btn btn-primary" onclick="refreshAlerts()">
+                <i class="fas fa-sync-alt"></i> Refresh
+            </button>
+        </div>
+    </div>
+    <div class="table-responsive">
+        <table class="data-table" id="alerts-table">
+            <thead>
+                <tr>
+                    <th>Severity</th>
+                    <th>Source</th>
+                    <th>Type</th>
+                    <th>Summary</th>
+                    <th>Target</th>
+                    <th>Last Seen</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="alerts-tbody">
+                <tr>
+                    <td colspan="7" class="empty-state">
+                        <i class="fas fa-spinner fa-spin"></i> Loading alerts...
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<style>
+    .page-header {
+        margin-bottom: 2rem;
+    }
+    
+    .page-header h1 {
+        font-size: 1.75rem;
+        margin-bottom: 0.5rem;
+        color: var(--accent-red);
+    }
+    
+    .page-subtitle {
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+    }
+    
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
+    
+    .stat-card {
+        padding: 1.25rem;
+        text-align: center;
+    }
+    
+    .stat-value {
+        font-size: 2rem;
+        font-weight: 700;
+        font-family: 'JetBrains Mono', monospace;
+    }
+    
+    .stat-label {
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    
+    .card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+    
+    .card-header h2 {
+        font-size: 1.1rem;
+        margin: 0;
+    }
+    
+    .table-responsive {
+        overflow-x: auto;
+    }
+    
+    .data-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    .data-table th,
+    .data-table td {
+        padding: 0.75rem 1rem;
+        text-align: left;
+        border-bottom: 1px solid var(--border-color);
+    }
+    
+    .data-table th {
+        background: var(--glass-bg-light);
+        font-weight: 600;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        color: var(--text-secondary);
+    }
+    
+    .data-table tbody tr:hover {
+        background: rgba(255, 255, 255, 0.02);
+    }
+    
+    .severity-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.25rem 0.6rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+    
+    .severity-5, .severity-critical {
+        background: rgba(var(--accent-red-rgb, 239, 68, 68), 0.2);
+        color: var(--accent-red);
+        border: 1px solid var(--accent-red);
+    }
+    
+    .severity-4, .severity-high {
+        background: rgba(var(--accent-yellow-rgb, 245, 158, 11), 0.2);
+        color: var(--accent-yellow);
+        border: 1px solid var(--accent-yellow);
+    }
+    
+    .severity-3, .severity-medium {
+        background: rgba(var(--accent-blue-rgb, 59, 130, 246), 0.2);
+        color: var(--accent-blue);
+        border: 1px solid var(--accent-blue);
+    }
+    
+    .severity-2, .severity-1, .severity-low {
+        background: rgba(var(--accent-green-rgb, 34, 197, 94), 0.2);
+        color: var(--accent-green);
+        border: 1px solid var(--accent-green);
+    }
+    
+    .alert-type {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.85rem;
+    }
+
+    .alert-source {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--text-secondary);
+    }
+
+    .alert-summary {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+    }
+
+    .alert-meta {
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+    }
+
+    .count-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.1rem 0.45rem;
+        border-radius: 999px;
+        border: 1px solid var(--border-color);
+        font-size: 0.7rem;
+        text-transform: uppercase;
+    }
+
+    .details-row {
+        background: rgba(255, 255, 255, 0.02);
+    }
+
+    .details-panel {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 0.5rem 1.5rem;
+        padding: 0.75rem 0;
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+    }
+
+    .details-panel span {
+        color: var(--text-primary);
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 3rem !important;
+        color: var(--text-secondary);
+    }
+    
+    .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+        border: none;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .btn-primary {
+        background: var(--accent-blue);
+        color: #fff;
+    }
+    
+    .btn-primary:hover {
+        filter: brightness(1.1);
+        box-shadow: var(--neon-blue);
+    }
+    
+    .btn-sm {
+        padding: 0.3rem 0.6rem;
+        font-size: 0.75rem;
+    }
+    
+    .btn-outline {
+        background: transparent;
+        border: 1px solid var(--border-color);
+        color: var(--text-primary);
+    }
+    
+    .btn-outline:hover {
+        background: rgba(255, 255, 255, 0.05);
+    }
+    
+    .mac-address {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.8rem;
+        color: var(--accent-cyan);
+    }
+    
+    .timestamp {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+    }
+
+    .alert-confidence {
+        margin-left: 0.35rem;
+        font-size: 0.75rem;
+        color: var(--accent-cyan);
+        font-family: 'JetBrains Mono', monospace;
+    }
+
+    .feedback-badge {
+        display: inline-flex;
+        align-items: center;
+        margin-left: 0.4rem;
+        padding: 0.15rem 0.45rem;
+        border-radius: 4px;
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        border: 1px solid var(--border-color);
+    }
+
+    .feedback-benign {
+        color: var(--accent-green);
+        border-color: var(--accent-green);
+    }
+
+    .feedback-confirmed {
+        color: var(--accent-red);
+        border-color: var(--accent-red);
+    }
+
+    .feedback-noisy {
+        color: var(--accent-yellow);
+        border-color: var(--accent-yellow);
+    }
+
+    .filters-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        padding: 1rem 1.25rem;
+        align-items: center;
+    }
+
+    .filter-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+    }
+
+    .filter-select {
+        background: var(--glass-bg-light);
+        border: 1px solid var(--border-color);
+        color: var(--text-primary);
+        padding: 0.35rem 0.6rem;
+        border-radius: 6px;
+        font-size: 0.85rem;
+    }
+
+    .filter-checkbox {
+        flex-direction: row;
+        align-items: center;
+        gap: 0.5rem;
+    }
+</style>
+
+<script>
+    let alertsData = [];
+
+    function escapeHtml(value) {
+        return String(value || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+    }
+
+    function sanitizeId(value) {
+        return String(value || '').replace(/[^a-zA-Z0-9_-]/g, '');
+    }
+
+    function sourceLabel(alert) {
+        if (alert.source === 'attack_timeline') return 'ML';
+        if (alert.source === 'attack_alerts') return 'WIDS';
+        return 'WIDS*';
+    }
+
+    function formatTimestamp(ts) {
+        if (!ts) return 'Unknown';
+        return new Date(ts * 1000).toLocaleString();
+    }
+    
+    async function refreshAlerts() {
+        try {
+            const source = document.getElementById('filter-source')?.value || 'all';
+            const limit = document.getElementById('filter-limit')?.value || 100;
+            const includeAck = document.getElementById('filter-acknowledged')?.checked ? 'true' : 'false';
+            const response = await fetch(`/api/alerts?source=${source}&limit=${limit}&include_acknowledged=${includeAck}`);
+            const data = await response.json();
+            alertsData = data.alerts || [];
+            renderAlerts();
+            updateStats();
+        } catch (error) {
+            console.error('Failed to fetch alerts:', error);
+            showToast('Failed to load alerts', 'danger');
+        }
+    }
+    
+    function renderAlerts() {
+        const tbody = document.getElementById('alerts-tbody');
+        
+        if (alertsData.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" class="empty-state">
+                        <i class="fas fa-check-circle" style="color: var(--accent-green);"></i>
+                        No active alerts
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+        
+        tbody.innerHTML = alertsData.map(alert => {
+            const severity = alert.severity || 1;
+            const severityLabel = severity >= 5 ? 'Critical' : severity >= 4 ? 'High' : severity >= 3 ? 'Medium' : 'Low';
+            const severityIcon = severity >= 4 ? 'exclamation-circle' : 'exclamation-triangle';
+            const lastSeen = formatTimestamp(alert.last_seen || alert.timestamp);
+            const isAnomaly = alert.source === 'attack_timeline';
+            const feedback = alert.feedback_label;
+            const feedbackBadge = feedback ? `<span class="feedback-badge feedback-${feedback}">${feedback}</span>` : '';
+            const confidence = alert.confidence ? `<span class="alert-confidence">${alert.confidence}%</span>` : '';
+            const title = alert.title || alert.alert_type || 'Alert';
+            const titleContent = `${title}${confidence}${feedbackBadge}`;
+            const description = alert.description ? escapeHtml(alert.description) : '';
+            const titleHtml = description ? `<span title="${description}">${titleContent}</span>` : titleContent;
+            const countBadge = alert.event_count ? `<span class="count-badge">x${alert.event_count}</span>` : '';
+            const detailsId = `details-${sanitizeId(alert.id)}`;
+            const metaLine = [
+                alert.source_mac ? `From <span>${escapeHtml(alert.source_mac)}</span>` : null,
+                alert.target_mac ? `To <span>${escapeHtml(alert.target_mac)}</span>` : null,
+                alert.channel ? `Ch <span>${escapeHtml(alert.channel)}</span>` : null,
+                countBadge ? `Count ${countBadge}` : null,
+            ].filter(Boolean).join(' · ');
+
+            let actions = `
+                <button class="btn btn-sm btn-outline" onclick="toggleDetails('${detailsId}')">
+                    <i class="fas fa-info-circle"></i>
+                </button>
+            `;
+            if (isAnomaly) {
+                const disabled = feedback ? "disabled" : "";
+                actions = `
+                    <button class="btn btn-sm btn-outline" onclick="sendFeedback('${alert.id}', 'confirmed')" ${disabled}>
+                        <i class="fas fa-skull-crossbones"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline" onclick="sendFeedback('${alert.id}', 'benign')" ${disabled}>
+                        <i class="fas fa-check-circle"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline" onclick="toggleDetails('${detailsId}')">
+                        <i class="fas fa-info-circle"></i>
+                    </button>
+                `;
+            } else if (alert.source === 'attack_alerts') {
+                const acked = alert.acknowledged;
+                actions = `
+                    <button class="btn btn-sm btn-outline" onclick="toggleDetails('${detailsId}')">
+                        <i class="fas fa-info-circle"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline" onclick="acknowledgeAlert('${alert.id}', ${acked ? 'false' : 'true'})">
+                        <i class="fas fa-${acked ? 'undo' : 'check'}"></i>
+                    </button>
+                `;
+            } else {
+                actions = `
+                    <button class="btn btn-sm btn-outline" onclick="toggleDetails('${detailsId}')">
+                        <i class="fas fa-info-circle"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline" disabled>
+                        <i class="fas fa-check"></i>
+                    </button>
+                `;
+            }
+            
+            return `
+                <tr data-alert-id="${alert.id}">
+                    <td>
+                        <span class="severity-badge severity-${severity}">
+                            <i class="fas fa-${severityIcon}"></i> ${severityLabel}
+                        </span>
+                    </td>
+                    <td class="alert-source">${sourceLabel(alert)}</td>
+                    <td class="alert-type">${alert.alert_type || 'unknown'}</td>
+                    <td>
+                        <div class="alert-summary">
+                            <div>${titleHtml}</div>
+                            <div class="alert-meta">${metaLine || 'No additional context yet'}</div>
+                        </div>
+                    </td>
+                    <td>
+                        ${alert.ssid ? escapeHtml(alert.ssid) : '-'}
+                        <div class="mac-address">${alert.bssid ? escapeHtml(alert.bssid) : '-'}</div>
+                    </td>
+                    <td class="timestamp">${lastSeen}</td>
+                    <td>${actions}</td>
+                </tr>
+                <tr class="details-row" id="${detailsId}" style="display: none;">
+                    <td colspan="7">
+                        <div class="details-panel">
+                            <div>First Seen: <span>${formatTimestamp(alert.first_seen || alert.timestamp)}</span></div>
+                            <div>Last Seen: <span>${lastSeen}</span></div>
+                            <div>Count: <span>${alert.event_count || 1}</span></div>
+                            <div>Channel: <span>${alert.channel || '-'}</span></div>
+                            <div>Source MAC: <span>${alert.source_mac ? escapeHtml(alert.source_mac) : '-'}</span></div>
+                            <div>Target MAC: <span>${alert.target_mac ? escapeHtml(alert.target_mac) : '-'}</span></div>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+    
+    function updateStats() {
+        let critical = 0, high = 0, medium = 0;
+        
+        alertsData.forEach(alert => {
+            const sev = alert.severity || 1;
+            if (sev >= 5) critical++;
+            else if (sev >= 4) high++;
+            else if (sev >= 3) medium++;
+        });
+        
+        document.getElementById('stat-critical').textContent = critical;
+        document.getElementById('stat-high').textContent = high;
+        document.getElementById('stat-medium').textContent = medium;
+        document.getElementById('stat-total').textContent = alertsData.length;
+    }
+    
+    function toggleDetails(detailsId) {
+        const row = document.getElementById(detailsId);
+        if (!row) return;
+        row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
+    }
+
+    async function acknowledgeAlert(alertId, acknowledged = true) {
+        try {
+            const response = await fetch('/api/alerts/ack', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ alert_id: alertId, acknowledged: acknowledged })
+            });
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(text || 'Failed to update alert');
+            }
+            showToast(acknowledged ? 'Alert acknowledged' : 'Alert reopened', 'success');
+            refreshAlerts();
+        } catch (error) {
+            console.error('Failed to update alert:', error);
+            showToast('Failed to update alert', 'danger');
+        }
+    }
+
+    async function sendFeedback(alertId, label) {
+        try {
+            const response = await fetch('/api/alerts/feedback', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ alert_id: alertId, label: label })
+            });
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(text || 'Failed to save feedback');
+            }
+            const target = alertsData.find(entry => entry.id === alertId);
+            if (target) {
+                target.feedback_label = label;
+            }
+            renderAlerts();
+            showToast(`Feedback saved: ${label}`, 'success');
+        } catch (error) {
+            console.error('Failed to save feedback:', error);
+            showToast('Failed to save feedback', 'danger');
+        }
+    }
+    
+    // Load on page load
+    document.addEventListener('DOMContentLoaded', () => {
+        refreshAlerts();
+        document.getElementById('filter-source')?.addEventListener('change', refreshAlerts);
+        document.getElementById('filter-limit')?.addEventListener('change', refreshAlerts);
+        document.getElementById('filter-acknowledged')?.addEventListener('change', refreshAlerts);
+    });
+    
+    // Auto-refresh every 30 seconds
+    setInterval(refreshAlerts, 30000);
+    
+    // Listen for new alerts via WebSocket
+    socket.on('new_packet', (event) => {
+        if (!wicapAcceptEvent(event)) return;
+        if (event.event_type && event.event_type.startsWith('wids_')) {
+            showToast(`🚨 New Alert: ${event.event_type.replace('wids_', '')}`, 'danger');
+            refreshAlerts();
+        }
+    });
+</script>
+{% endblock %}

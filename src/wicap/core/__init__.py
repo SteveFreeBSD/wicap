@@ -1,0 +1,3 @@
+"""
+WICAP Core Module
+"""

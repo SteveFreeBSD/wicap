@@ -1,0 +1,281 @@
+{% extends "base.html" %}
+
+{% block title %}Device Inspection - {{ device.mac }}{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+    <header class="page-header">
+        <div class="header-split">
+            <div>
+                <h1><i class="fas fa-user-secret"></i> Device Inspection</h1>
+                <p>MAC: <span class="mono">{{ device.mac }}</span></p>
+            </div>
+            <div class="vendor-badge">
+                {{ device.vendor }}
+            </div>
+        </div>
+    </header>
+
+    <div class="dashboard-grid device-grid">
+        <!-- Metadata Card -->
+        <section class="card">
+            <h2><i class="fas fa-info-circle"></i> Identity</h2>
+            <div class="info-list">
+                <div class="info-item">
+                    <span class="label">Vendor</span>
+                    <span class="value">{{ device.vendor }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Total Events</span>
+                    <span class="value">{{ device.total_events }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">First Seen</span>
+                    <span class="value">{{ device.first_seen.strftime('%Y-%m-%d %H:%M:%S') if device.first_seen else
+                        'N/A' }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Last Seen</span>
+                    <span class="value">{{ device.last_seen.strftime('%Y-%m-%d %H:%M:%S') if device.last_seen else 'N/A'
+                        }}</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Signal History -->
+        <section class="card">
+            <h2><i class="fas fa-signal"></i> Signal Profiler</h2>
+            <div class="chart-container" style="height: 150px;">
+                <canvas id="signalChart"></canvas>
+            </div>
+        </section>
+
+        <!-- RSSI Summary -->
+        <section class="card">
+            <h2><i class="fas fa-broadcast-tower"></i> RSSI Summary</h2>
+            <div class="info-list">
+                <div class="info-item">
+                    <span class="label">Average</span>
+                    <span class="value">
+                        {{ device.rssi_avg if device.rssi_avg is not none else 'N/A' }}{% if device.rssi_avg is not
+                        none %} dBm{% endif %}
+                    </span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Max</span>
+                    <span class="value">
+                        {{ device.rssi_max if device.rssi_max is not none else 'N/A' }}{% if device.rssi_max is not
+                        none %} dBm{% endif %}
+                    </span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Last</span>
+                    <span class="value">
+                        {{ device.rssi_last if device.rssi_last is not none else 'N/A' }}{% if device.rssi_last is not
+                        none %} dBm{% endif %}
+                    </span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Samples</span>
+                    <span class="value">{{ device.rssi_sample_count }}</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Last Seen</span>
+                    <span class="value">
+                        {{ device.rssi_last_seen.strftime('%Y-%m-%d %H:%M:%S') if device.rssi_last_seen else 'N/A' }}
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Probe Requests -->
+        <section class="card">
+            <h2><i class="fas fa-search"></i> Probe Requests</h2>
+            <p class="text-secondary small">Networks this device is actively searching for:</p>
+            <div class="tag-cloud">
+                {% for ssid in probes %}
+                <span class="badge badge-warning">{{ ssid }}</span>
+                {% else %}
+                <span class="text-muted">No probes detected</span>
+                {% endfor %}
+            </div>
+        </section>
+
+        <!-- Observed Targets -->
+        <section class="card">
+            <h2><i class="fas fa-link"></i> Observed Targets</h2>
+            <p class="text-secondary small">Access Points this device has interacted with:</p>
+            <div class="tag-cloud">
+                {% for bssid in targets %}
+                <span class="badge badge-success">{{ bssid }}</span>
+                {% else %}
+                <span class="text-muted">No targets detected</span>
+                {% endfor %}
+            </div>
+        </section>
+    </div>
+
+    <!-- Associations -->
+    <section class="card mt-2">
+        <h2><i class="fas fa-network-wired"></i> Association History</h2>
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>BSSID</th>
+                        <th>SSID</th>
+                        <th>First Seen</th>
+                        <th>Last Seen</th>
+                        <th>Count</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for assoc in associations %}
+                    <tr>
+                        <td class="mono">{{ assoc.bssid }}</td>
+                        <td>{{ assoc.ssid if assoc.ssid else '-' }}</td>
+                        <td class="mono">
+                            {{ assoc.first_seen.strftime('%Y-%m-%d %H:%M:%S') if assoc.first_seen else 'N/A' }}
+                        </td>
+                        <td class="mono">
+                            {{ assoc.last_seen.strftime('%Y-%m-%d %H:%M:%S') if assoc.last_seen else 'N/A' }}
+                        </td>
+                        <td>{{ assoc.association_count }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="text-muted">No associations recorded</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- Recent Raw Activity -->
+    <section class="card mt-2">
+        <h2><i class="fas fa-history"></i> Recent Activity Log</h2>
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Type</th>
+                        <th>Ch</th>
+                        <th>RSSI</th>
+                        <th>Act</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for event in activity %}
+                    <tr>
+                        <td class="mono">{{ event.inserted_at.strftime('%H:%M:%S') }}</td>
+                        <td><span class="badge badge-neutral">{{ event.event_type }}</span></td>
+                        <td>{{ event.channel }}</td>
+                        <td class="{{ 'rssi-strong' if event.rssi and event.rssi|int >= -60 else 'rssi-weak' }}">
+                            {{ event.rssi if event.rssi else '-' }} dBm
+                        </td>
+                        <td>
+                            {% if event.inserted_at %}
+                            {% set ts = event.inserted_at.replace(tzinfo=none).timestamp() %}
+                            <a href="/api/evidence/slice?start_ts={{ ts - 30 }}&end_ts={{ ts + 30 }}"
+                                title="Export Evidence (1m)" target="_blank"
+                                style="color: var(--accent-blue); opacity: 0.7;">
+                                <i class="fas fa-file-download"></i>
+                            </a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+
+<script>
+    Chart.defaults.color = '#8b949e';
+    Chart.defaults.borderColor = '#30363d';
+
+    // Signal Sparkline
+    const signalCtx = document.getElementById('signalChart').getContext('2d');
+
+    // Process activity data for chart
+    // We need to reverse it because SQL returned newest first, but chart wants chronological
+    const rawData = [
+        {% for event in activity %}
+    { t: "{{ event.inserted_at.isoformat() }}", y: { { event.rssi if event.rssi else 'null' } } },
+    {% endfor %}
+    ].reverse().filter(p => p.y !== null);
+
+    const signalChart = new Chart(signalCtx, {
+        type: 'line',
+        data: {
+            datasets: [{
+                label: 'RSSI (dBm)',
+                data: rawData.map(p => p.y),
+                labels: rawData.map(p => p.t),
+                borderColor: '#58a6ff',
+                backgroundColor: 'rgba(88, 166, 255, 0.1)',
+                borderWidth: 2,
+                tension: 0.4,
+                pointRadius: 2,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { display: false },
+                y: {
+                    max: -20,
+                    min: -95,
+                    grid: { color: '#30363d' }
+                }
+            }
+        }
+    });
+</script>
+
+<style>
+    .header-split {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .vendor-badge {
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border-color);
+        padding: 0.5rem 1rem;
+        border-radius: var(--radius);
+        font-size: 1.2rem;
+        color: var(--text-primary);
+    }
+
+    .device-grid {
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+
+    .tag-cloud {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-top: 1rem;
+    }
+
+    .mt-2 {
+        margin-top: 2rem;
+    }
+
+    .badge-success {
+        background: rgba(63, 185, 80, 0.2);
+        color: #3fb950;
+        border: 1px solid rgba(63, 185, 80, 0.3);
+    }
+</style>
+{% endblock %}

@@ -1,0 +1,74 @@
+<div class="glass-table-container">
+    <table class="glass-table events-table">
+        <thead>
+            <tr>
+                <th style="width: 90px;">Time</th>
+                <th style="width: 90px;">Type</th>
+                <th style="width: 35%;">SSID</th>
+                <th style="width: 140px;">BSSID</th>
+                <th style="width: 20%;">Vendor</th>
+                <th style="width: 50px; text-align: center;">CH</th>
+                <th style="width: 90px; text-align: right;">Signal</th>
+                <th style="width: 50px; text-align: center;">Act</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for event in events %}
+            <tr>
+                <td style="color: var(--text-muted);">
+                    {{ event.timestamp.strftime('%H:%M:%S') if event.timestamp else 'N/A' }}</td>
+                <td><span class="badge"
+                        style="background: rgba(88, 166, 255, 0.1); color: var(--accent-blue); padding: 2px 6px; border-radius: 4px; font-size: 10px; white-space: nowrap;">{{
+                        event.event_type }}</span>
+                    {% if event.is_wifi6 %}
+                    <span class="badge" title="Wifi 6 (802.11ax)"
+                        style="background: linear-gradient(135deg, #7c3aed, #db2777); color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; margin-left: 4px;">AX</span>
+                    {% endif %}
+                </td>
+                <td style="font-weight: 600; color: var(--text-primary);" title="{{ event.ssid or 'Hidden' }}">{{
+                    event.ssid or '<span style="color:var(--text-muted); font-style:italic;">Hidden</span>'|safe }}</td>
+                <td style="font-family: monospace; color: var(--text-secondary); font-size: 11px;">
+                    {{ event.bssid or '' }}</td>
+                <td style="color: var(--text-muted); font-size: 11px;" title="{{ event.vendor or '' }}">{{ event.vendor
+                    or '' }}</td>
+                <td style="text-align: center;">{{ event.channel }}</td>
+                <td style="text-align: right;">
+                    {% if event.rssi %}
+                    {% set signal = event.rssi|int %}
+                    {% if signal > -65 %}
+                    <span style="color: var(--accent-green); font-weight: bold;">{{
+                        signal }} dBm</span>
+                    {% elif signal > -80 %}
+                    <span style="color: var(--accent-yellow);">{{ signal }}
+                        dBm</span>
+                    {% else %}
+                    <span style="color: var(--accent-red);">{{ signal }}
+                        dBm</span>
+                    {% endif %}
+                    {% else %}
+                    <span style="color: var(--text-muted);">-</span>
+                    {% endif %}
+                </td>
+                <td style="text-align: center;">
+                    {% if event.timestamp %}
+                    {% set ts = event.timestamp.replace(tzinfo=none).timestamp() %}
+                    <!-- Use explicit timezone replacement to avoid Jinja/TZ issues if needed, 
+                         but assuming main.py returns naive or consistent datetimes. 
+                         If timestamp is naive, .timestamp() uses local time which matches system. -->
+                    <a href="/api/evidence/slice?start_ts={{ ts - 30 }}&end_ts={{ ts + 30 }}"
+                        title="Export Evidence (1m)" target="_blank" style="color: var(--accent-blue); opacity: 0.7;">
+                        <i class="fas fa-file-download"></i>
+                    </a>
+                    {% endif %}
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="8" style="text-align: center; padding: 20px; color: var(--text-muted);">
+                    <i class="fas fa-spinner fa-spin"></i> Waiting for events...
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>

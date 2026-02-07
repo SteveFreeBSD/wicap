@@ -1,0 +1,64 @@
+__pycache__/
+*.pyc
+captures*/
+*.pcapng
+!tests/fixtures/pcap/*.pcapng
+backups/
+reset_wicap.py
+*.log
+
+# Secrets - never commit!
+.env
+
+# Runtime state
+*.state.json
+dwell_state.json
+processor.state.json
+logs/
+logs_soak_*/
+.soak_status.json
+.soak_pid
+captures_verify/
+docs/reports/soak/baseline.json
+
+# Runtime-generated NEXUS corpora (never track)
+nexus/wordlists/
+captures/wordlists/
+
+# Historical one-off artifacts
+tests/mock_cracks.pot
+tests/mock_hash.22000
+tests/triangulation_report.html
+
+# Virtualenvs
+.venv/
+.venv-e2e/
+venv/
+
+# Temp/test artifacts
+temp_*.txt
+temp_*.22000
+*.hash
+test*.22000
+
+# Test output
+scavenger_output/*.json
+
+# E2E-generated screenshots
+tests/screenshots/*.png
+
+# Archive (one-off scripts)
+/archive/
+
+# Rust build artifacts
+native/wicap_rust/target/
+
+# School project (separate from WICAP - see HandsOn_3.1/README.md)
+HandsOn_3.1/
+
+# Agent-generated bundles / scratch
+.agent/
+onboarding/
+
+# Model artifacts
+models/

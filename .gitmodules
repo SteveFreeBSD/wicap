@@ -1,0 +1,3 @@
+[submodule "princeprocessor"]
+	path = princeprocessor
+	url = https://github.com/hashcat/princeprocessor.git

@@ -1,0 +1,47 @@
+services:
+  wicap-ui:
+    build: .
+    image: wicap-ui:latest
+    container_name: wicap-ui
+    restart: unless-stopped
+
+    # Network - use host to access SQL Server
+    network_mode: "host"
+    pid: "host"
+
+    # Environment
+    environment:
+      - WICAP_SQL_HOST=${WICAP_SQL_HOST:-192.168.4.25}
+      - WICAP_SQL_DATABASE=${WICAP_SQL_DATABASE:-WifiInsanityDB}
+      - WICAP_SQL_USER=${WICAP_SQL_USER:-steve_linux}
+      - WICAP_SQL_PASSWORD=${WICAP_SQL_PASSWORD:-Put-A-Long-Random-Password-Here}
+      - WICAP_INTERNAL_SECRET=${WICAP_INTERNAL_SECRET:-Put-A-Long-Random-Password-Here}
+      - WICAP_INTERNAL_SECRET_REQUIRED=true
+      - WICAP_INTERNAL_ALLOWLIST=127.0.0.1,::1
+      - TZ=America/Chicago
+
+    # Health check
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ../captures:/app/captures
+      - ./app:/app/wicap-ui/app
+      - ../nexus:/app/nexus
+
+    # Labels
+    labels:
+      - "com.wicap.service=dashboard"
+      - "com.wicap.version=1.0"

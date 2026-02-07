@@ -1,0 +1,119 @@
+# =============================================================================
+# WICAP Unified Docker Compose Configuration
+# =============================================================================
+# Usage:
+#   Build:  docker compose build
+#   Start:  docker compose up -d
+#   Stop:   docker compose down
+# =============================================================================
+
+services:
+  # 1. Redis: Event Queue & Caching
+  # We start Redis first as others depend on it
+  redis:
+    image: redis:alpine
+    container_name: wicap-redis
+    network_mode: "host"
+    command: redis-server --port 6380 --appendonly yes
+    volumes:
+      - wicap_redis_data:/data
+      - /etc/localtime:/etc/localtime:ro
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options: { max-size: "10m", max-file: "3" }
+
+  # 2. Scout: Wireless Capture (Singleton, Privileged)
+  scout:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: wicap-core:latest
+    container_name: wicap-scout
+    network_mode: "host"
+    privileged: true
+    volumes:
+      - .:/app
+      - /etc/localtime:/etc/localtime:ro
+    env_file: .env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - WICAP_INTERNAL_SECRET=Put-A-Long-Random-Password-Here
+      - WICAP_REDIS_URL=redis://localhost:6380/0
+      - WICAP_INTERFACE=${WICAP_INTERFACE:-wlan1}
+      - WICAP_BT_ENABLED=${WICAP_BT_ENABLED:-false}
+      - WICAP_BT_INTERFACE=${WICAP_BT_INTERFACE:-auto}
+      - WICAP_BT_EXTCAP_DIR=${WICAP_BT_EXTCAP_DIR:-tools/bluetooth/extcap}
+      - WICAP_SQL_TRUST_CERT=yes
+      - WICAP_SQL_ENCRYPT=yes
+    command: [ "python3", "start_wicap.py", "--no-airmon-kill", "--services", "scout" ]
+    restart: unless-stopped
+    depends_on:
+      - redis
+
+  # 3. Processor: Event Processing & Persistence
+  processor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: wicap-core:latest
+    container_name: wicap-processor
+    network_mode: "host"
+    volumes:
+      - .:/app
+      - /etc/localtime:/etc/localtime:ro
+    env_file: .env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - WICAP_INTERNAL_SECRET=Put-A-Long-Random-Password-Here
+      - WICAP_REDIS_URL=redis://localhost:6380/0
+      - WICAP_SQL_TRUST_CERT=yes
+      - WICAP_SQL_ENCRYPT=yes
+      - WICAP_SQL_HOST=${WICAP_SQL_HOST:-192.168.4.25}
+      - WICAP_SQL_DATABASE=${WICAP_SQL_DATABASE:-WifiInsanityDB}
+      - WICAP_SQL_USER=${WICAP_SQL_USER:-steve_linux}
+      - WICAP_SQL_PASSWORD=${WICAP_SQL_PASSWORD:-Put-A-Long-Random-Password-Here}
+    command: [ "python3", "start_wicap.py", "--services", "processor,watcher", "--push-to-sql" ]
+    restart: unless-stopped
+    depends_on:
+      - redis
+
+  # 4. UI: Dashboard Dashboard
+  ui:
+    build:
+      context: ./wicap-ui
+      dockerfile: Dockerfile
+    image: wicap-ui:latest
+    container_name: wicap-ui
+    network_mode: "host"
+    pid: "host"
+    volumes:
+      - .:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /etc/localtime:/etc/localtime:ro
+    env_file: .env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app/wicap-ui
+      # Memory profiling (enable for diagnostics, may slow startup)
+      # - PYTHONTRACEMALLOC=25
+      # - WICAP_UI_MEMPROF=1
+      - WICAP_UI_URL=http://localhost:8080
+      - WICAP_INTERNAL_SECRET=Put-A-Long-Random-Password-Here
+      - WICAP_SQL_TRUST_CERT=yes
+      - WICAP_SQL_ENCRYPT=yes
+      - WICAP_SQL_HOST=${WICAP_SQL_HOST:-192.168.4.25}
+      - WICAP_SQL_DATABASE=${WICAP_SQL_DATABASE:-WifiInsanityDB}
+      - WICAP_SQL_USER=${WICAP_SQL_USER:-steve_linux}
+      - WICAP_SQL_PASSWORD=${WICAP_SQL_PASSWORD:-Put-A-Long-Random-Password-Here}
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      - redis
+
+volumes:
+  wicap_redis_data:

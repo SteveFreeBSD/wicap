@@ -1,0 +1,841 @@
+{% extends "base.html" %}
+
+{% block title %}Network Map - WICAP{% endblock %}
+
+{% block content %}
+<div class="map-container">
+    <!-- Filter Panel -->
+    <div class="map-filters glass-card">
+        <h3><i class="fas fa-filter"></i> Filters</h3>
+
+        <div class="filter-group">
+            <label>Device Type</label>
+            <div class="filter-checkboxes">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="filter-ap" checked onchange="applyFilters()">
+                    <span class="checkbox-icon ap"></span> Access Points
+                </label>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="filter-client" checked onchange="applyFilters()">
+                    <span class="checkbox-icon client"></span> Clients
+                </label>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="filter-ble" checked onchange="applyFilters()">
+                    <span class="checkbox-icon ble"></span> Bluetooth (BLE)
+                </label>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="filter-ghost" onchange="applyFilters()">
+                    <span class="checkbox-icon ghost"></span> Ghost (Scavenger)
+                </label>
+                <label class="checkbox-label"
+                    style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-color);">
+                    <input type="checkbox" id="filter-connected" onchange="applyFilters()">
+                    <span class="checkbox-icon" style="background: #da3633;"></span> Connected Only
+                </label>
+            </div>
+        </div>
+
+        <div class="filter-group">
+            <label>Vendor</label>
+            <select id="filter-vendor" onchange="applyFilters()">
+                <option value="all">All Vendors</option>
+                <option value="apple">Apple</option>
+                <option value="samsung">Samsung</option>
+                <option value="google">Google/Android</option>
+                <option value="intel">Intel</option>
+                <option value="realtek">Realtek</option>
+                <option value="other">Other</option>
+            </select>
+        </div>
+
+        <div class="filter-group">
+            <label>Signal Strength</label>
+            <select id="filter-rssi" onchange="applyFilters()">
+                <option value="all">All</option>
+                <option value="strong">Strong (> -50 dBm)</option>
+                <option value="medium">Medium (-70 to -50)</option>
+                <option value="weak">Weak (< -70 dBm)</option>
+            </select>
+        </div>
+
+        <div class="filter-actions">
+            <button class="btn btn-secondary btn-sm" onclick="resetFilters()">
+                <i class="fas fa-undo"></i> Reset
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="refreshMap()">
+                <i class="fas fa-sync"></i> Refresh
+            </button>
+        </div>
+
+        <div class="filter-stats">
+            <span id="node-count">0</span> nodes | <span id="edge-count">0</span> connections
+        </div>
+    </div>
+
+    <!-- Network Map -->
+    <div id="mynetwork"></div>
+    <div id="map-status" class="map-status glass-card" style="display: none;"></div>
+
+    <!-- Legend overlay -->
+    <div class="map-legend glass-card">
+        <h4>Legend</h4>
+        <div class="legend-item"><i class="fas fa-wifi" style="color: #58a6ff;"></i> Access Point</div>
+        <div class="legend-item"><i class="fas fa-mobile-alt" style="color: #3fb950;"></i> Mobile Device</div>
+        <div class="legend-item"><i class="fas fa-laptop" style="color: #3fb950;"></i> Laptop/PC</div>
+        <div class="legend-item"><i class="fas fa-video" style="color: #d29922;"></i> Camera/IoT</div>
+        <div class="legend-item"><i class="fab fa-bluetooth-b" style="color: #8b5cf6;"></i> Bluetooth (BLE)</div>
+        <div class="legend-item"><i class="fas fa-ghost" style="color: #8b949e;"></i> Ghost (Historical)</div>
+        <hr style="border-color: var(--border-color); margin: 8px 0;">
+        <div class="legend-item"><span style="display:inline-block;width:20px;height:4px;background:#3fb950;"></span>
+            Connected (Strong)</div>
+        <div class="legend-item"><span style="display:inline-block;width:20px;height:2px;background:#3fb950;"></span>
+            Connected (Medium)</div>
+        <div class="legend-item"><span style="display:inline-block;width:20px;height:1px;background:#3fb950;"></span>
+            Connected (Weak)</div>
+        <div class="legend-item"><span style="display:inline-block;width:20px;height:3px;background:#da3633;"></span>
+            Deauth Attack</div>
+        <div class="legend-item"><span
+                style="display:inline-block;width:20px;height:1px;background:#d29922;border-style:dashed;"></span>
+            Probing</div>
+    </div>
+
+    <!-- Node Info Tooltip -->
+    <div id="node-tooltip" class="node-tooltip glass-card" style="display: none;">
+        <div class="tooltip-header">
+            <span id="tooltip-icon"></span>
+            <span id="tooltip-title"></span>
+        </div>
+        <div class="tooltip-body" id="tooltip-content"></div>
+        <div class="tooltip-footer">
+            <button class="btn btn-secondary btn-sm" onclick="viewDossier()">
+                <i class="fas fa-id-card"></i> View Dossier
+            </button>
+        </div>
+    </div>
+</div>
+
+<script src="/static/js/vis-network.min.js"></script>
+<script>
+    // Icon mapping based on vendor
+    const ICON_FACE_SOLID = '"Font Awesome 5 Free"';
+    const ICON_FACE_BRANDS = '"Font Awesome 5 Brands"';
+
+    const VENDOR_ICONS = {
+        'apple': { code: '\uf179', color: '#a2aaad', face: ICON_FACE_BRANDS },      // Apple logo
+        'samsung': { code: '\uf3cd', color: '#1428a0', face: ICON_FACE_SOLID, weight: '900' },     // Mobile
+        'google': { code: '\uf17b', color: '#3ddc84', face: ICON_FACE_BRANDS },     // Android
+        'huawei': { code: '\uf3cd', color: '#cf0a2c', face: ICON_FACE_SOLID, weight: '900' },      // Mobile
+        'xiaomi': { code: '\uf3cd', color: '#ff6900', face: ICON_FACE_SOLID, weight: '900' },      // Mobile
+        'intel': { code: '\uf109', color: '#0071c5', face: ICON_FACE_SOLID, weight: '900' },       // Laptop
+        'realtek': { code: '\uf109', color: '#00a0e9', face: ICON_FACE_SOLID, weight: '900' },     // Laptop
+        'microsoft': { code: '\uf109', color: '#00a4ef', face: ICON_FACE_SOLID, weight: '900' },   // Laptop
+        'amazon': { code: '\uf8cc', color: '#ff9900', face: ICON_FACE_SOLID, weight: '900' },      // Echo/IoT
+        'ring': { code: '\uf03d', color: '#1998d5', face: ICON_FACE_SOLID, weight: '900' },        // Camera
+        'nest': { code: '\uf03d', color: '#0ab8b8', face: ICON_FACE_SOLID, weight: '900' },        // Camera
+        'hikvision': { code: '\uf03d', color: '#e31e25', face: ICON_FACE_SOLID, weight: '900' },   // Camera
+        'dahua': { code: '\uf03d', color: '#d71920', face: ICON_FACE_SOLID, weight: '900' },       // Camera
+        'tp-link': { code: '\uf1eb', color: '#4acbd6', face: ICON_FACE_SOLID, weight: '900' },     // Router
+        'netgear': { code: '\uf1eb', color: '#6d2077', face: ICON_FACE_SOLID, weight: '900' },     // Router
+        'asus': { code: '\uf1eb', color: '#000', face: ICON_FACE_SOLID, weight: '900' },           // Router
+        'bluetooth': { code: '\uf294', color: '#8b5cf6', face: ICON_FACE_BRANDS },
+        'default_mobile': { code: '\uf3cd', color: '#3fb950', face: ICON_FACE_SOLID, weight: '900' },
+        'default_ap': { code: '\uf1eb', color: '#58a6ff', face: ICON_FACE_SOLID, weight: '900' },
+        'default_client': { code: '\uf109', color: '#3fb950', face: ICON_FACE_SOLID, weight: '900' },
+        'ghost': { code: '\uf6e2', color: '#8b949e', face: ICON_FACE_SOLID, weight: '900' }
+    };
+    window.VENDOR_ICONS = VENDOR_ICONS;
+
+    function getVendorIcon(vendor, isAP, deviceType) {
+        if (!vendor && !deviceType) return isAP ? VENDOR_ICONS.default_ap : VENDOR_ICONS.default_client;
+
+        // 1. Explicit device type check
+        if (deviceType) {
+            const type = deviceType.toLowerCase();
+            if (type.includes('ble') || type.includes('bluetooth')) return VENDOR_ICONS.bluetooth;
+            if (type.includes('camera') || type.includes('surveillance')) return { code: '\uf03d', color: '#d29922', face: ICON_FACE_SOLID };
+            if (type.includes('phone') || type.includes('mobile')) return VENDOR_ICONS.default_mobile;
+            if (type.includes('laptop') || type.includes('computer') || type.includes('pc')) return { code: '\uf109', color: '#3fb950', face: ICON_FACE_SOLID };
+            if (type.includes('printer')) return { code: '\uf02f', color: '#6e7781', face: ICON_FACE_SOLID };
+            if (type.includes('iot') || type.includes('smart')) return { code: '\uf8cc', color: '#ff9900', face: ICON_FACE_SOLID };
+            if (type.includes('router') || type.includes('gateway')) return { code: '\uf1eb', color: '#58a6ff', face: ICON_FACE_SOLID };
+        }
+        const v = vendor.toLowerCase();
+
+        // Check exact vendor matches first
+        for (const key in VENDOR_ICONS) {
+            if (key.startsWith('default_')) continue;  // Skip defaults
+            if (v.includes(key)) return VENDOR_ICONS[key];
+        }
+
+        // Camera/surveillance detection patterns
+        if (v.includes('camera') || v.includes('cam') || v.includes('surveillance') ||
+            v.includes('ip cam') || v.includes('security') || v.includes('video') ||
+            v.includes('axis') || v.includes('vivotek') || v.includes('foscam') ||
+            v.includes('reolink') || v.includes('amcrest') || v.includes('ubiquiti') ||
+            v.includes('lorex') || v.includes('swann')) {
+            return { code: '\uf03d', color: '#d29922', face: ICON_FACE_SOLID };  // Camera icon
+        }
+
+        // IoT/Smart home detection
+        if (v.includes('iot') || v.includes('smart') || v.includes('esp') ||
+            v.includes('tuya') || v.includes('sonoff') || v.includes('shelly') ||
+            v.includes('philips') || v.includes('wemo') || v.includes('wyze') ||
+            v.includes('tp-link kasa') || v.includes('tapo')) {
+            return { code: '\uf8cc', color: '#ff9900', face: ICON_FACE_SOLID };  // IoT icon
+        }
+
+        // Mobile/phone detection
+        if (v.includes('mobile') || v.includes('phone') || v.includes('wireless') ||
+            v.includes('murata') || v.includes('hon hai') || v.includes('foxconn') ||
+            v.includes('quanta') || v.includes('pegatron')) {
+            return VENDOR_ICONS.default_mobile;
+        }
+
+        // Router/network equipment
+        if (v.includes('router') || v.includes('network') || v.includes('cisco') ||
+            v.includes('linksys') || v.includes('aruba') || v.includes('meraki') ||
+            v.includes('ubiquiti') || v.includes('mikrotik') || v.includes('ruckus')) {
+            return { code: '\uf1eb', color: '#58a6ff', face: ICON_FACE_SOLID };  // Router icon
+        }
+
+        return isAP ? VENDOR_ICONS.default_ap : VENDOR_ICONS.default_client;
+    }
+
+    const ICON_FACE = ICON_FACE_SOLID;
+    const container = document.getElementById('mynetwork');
+    let network = null;
+    let allNodes = [];
+    let allEdges = [];
+    let selectedNodeId = null;
+    let useIconFonts = true;
+    let iconCheckDone = false;
+    let lastIncludeScavenger = false;
+    let autoResetDone = false;
+    const statusEl = document.getElementById('map-status');
+
+    const options = {
+        nodes: {
+            shape: 'icon',
+            font: { color: '#f0f6fc', face: 'Roboto', size: 12 },
+            icon: { face: ICON_FACE, size: 28, weight: '900' }
+        },
+        layout: {
+            improvedLayout: false
+        },
+        edges: {
+            width: 2,
+            smooth: { type: 'continuous' }
+        },
+        groups: {
+            ap: {
+                icon: { face: ICON_FACE, code: '\uf1eb', size: 32, color: '#58a6ff', weight: '900' }
+            },
+            client: {
+                icon: { face: ICON_FACE, code: '\uf109', size: 24, color: '#3fb950', weight: '900' }
+            },
+            mobile: {
+                icon: { face: ICON_FACE, code: '\uf3cd', size: 24, color: '#3fb950', weight: '900' }
+            },
+            camera: {
+                icon: { face: ICON_FACE, code: '\uf03d', size: 24, color: '#d29922', weight: '900' }
+            },
+            ble: {
+                icon: { face: ICON_FACE_BRANDS, code: '\uf294', size: 24, color: '#8b5cf6', weight: '900' }
+            },
+            ghost: {
+                icon: { face: ICON_FACE, code: '\uf6e2', size: 24, color: '#8b949e', weight: '900' }
+            }
+        },
+        physics: {
+            stabilization: { iterations: 100, fit: true },
+            barnesHut: {
+                gravitationalConstant: -8000,
+                centralGravity: 0.8,
+                springLength: 120,
+                springConstant: 0.08,
+                damping: 0.12,
+                avoidOverlap: 0.5
+            },
+            solver: 'barnesHut',
+            adaptiveTimestep: true
+        },
+        interaction: {
+            hover: true,
+            tooltipDelay: 200
+        }
+    };
+
+    const GROUP_COLORS = {
+        ap: '#58a6ff',
+        client: '#3fb950',
+        mobile: '#3fb950',
+        camera: '#d29922',
+        ble: '#8b5cf6',
+        ghost: '#8b949e',
+        ap_ghost: '#8b949e'
+    };
+
+    async function ensureIconFonts() {
+        if (iconCheckDone || !document.fonts || !document.fonts.load) {
+            if (!document.fonts) {
+                useIconFonts = false;
+            }
+            iconCheckDone = true;
+            return;
+        }
+        iconCheckDone = true;
+        try {
+            await Promise.race([
+                document.fonts.load('900 24px "Font Awesome 5 Free"'),
+                new Promise(resolve => setTimeout(resolve, 1500))
+            ]);
+        } catch (e) {
+            // Ignore font load errors and fall back below.
+        }
+        useIconFonts = document.fonts.check('900 24px "Font Awesome 5 Free"');
+        if (!useIconFonts && typeof showToast === 'function') {
+            showToast('Icon font unavailable; using dot rendering for map.', 'info');
+        }
+    }
+
+    function applyFallbackNodeStyle(node) {
+        const color = GROUP_COLORS[node.group] || '#3fb950';
+        const size = node.group === 'ap' ? 16 : 12;
+        return {
+            ...node,
+            shape: 'dot',
+            size,
+            color: {
+                background: color,
+                border: color
+            }
+        };
+    }
+
+    function showMapStatus(message, tone = 'info') {
+        if (!statusEl) return;
+        statusEl.textContent = message;
+        statusEl.dataset.tone = tone;
+        statusEl.style.display = 'flex';
+    }
+
+    function hideMapStatus() {
+        if (!statusEl) return;
+        statusEl.textContent = '';
+        statusEl.style.display = 'none';
+        delete statusEl.dataset.tone;
+    }
+
+    function getIncludeScavenger() {
+        const ghostToggle = document.getElementById('filter-ghost');
+        return ghostToggle ? ghostToggle.checked : false;
+    }
+
+    async function loadTopology(force = false) {
+        try {
+            const sourceParam = window.WICAP_DATA_SOURCE && window.WICAP_DATA_SOURCE !== 'live'
+                ? `&source=${window.WICAP_DATA_SOURCE}`
+                : '';
+            const includeScavenger = getIncludeScavenger();
+            if (force || includeScavenger !== lastIncludeScavenger) {
+                lastIncludeScavenger = includeScavenger;
+            }
+            const res = await fetch(`/api/map/topology?include_scavenger=${includeScavenger}${sourceParam}`);
+            if (!res.ok) {
+                showMapStatus(`Map data fetch failed (${res.status})`, 'error');
+                return;
+            }
+            const data = await res.json();
+            if (data.error) {
+                showMapStatus(`Map data error: ${data.error}`, 'error');
+                return;
+            }
+            if (!data.nodes || data.nodes.length === 0) {
+                showMapStatus('No map data available yet.', 'info');
+                allNodes = [];
+                allEdges = [];
+                updateStats();
+                renderNetwork();
+                return;
+            }
+
+            await ensureIconFonts();
+
+            // Enhance nodes with vendor-specific icons or fallback dots.
+            allNodes = (data.nodes || []).map(node => {
+                if (!useIconFonts) {
+                    return applyFallbackNodeStyle(node);
+                }
+                const vendorIcon = getVendorIcon(node.vendor, node.group === 'ap', node.device_type);
+
+                // M5: Use security color for APs if available
+                let iconColor = vendorIcon.color;
+                if (node.group === 'ap' && node.security_color) {
+                    iconColor = node.security_color;
+                }
+
+                return {
+                    ...node,
+                    icon: {
+                        face: vendorIcon.face || ICON_FACE,
+                        code: vendorIcon.code,
+                        size: node.group === 'ap' ? 32 : 24,
+                        color: iconColor
+                    }
+                };
+            });
+            allEdges = data.edges || [];
+
+            if (document.fonts && document.fonts.ready) {
+                await Promise.race([
+                    document.fonts.ready,
+                    new Promise(resolve => setTimeout(resolve, 1500))
+                ]);
+            }
+            updateStats();
+            renderNetwork();
+        } catch (e) {
+            console.error("Map load failed:", e);
+            showMapStatus('Map load failed; check console for details.', 'error');
+        }
+    }
+
+    function renderNetwork() {
+        if (typeof vis === 'undefined' || !vis.Network) {
+            showMapStatus('Map library failed to load.', 'error');
+            return;
+        }
+        const filteredNodes = filterNodes(allNodes);
+        const filteredEdges = filterEdges(allEdges, filteredNodes);
+        if (filteredNodes.length === 0) {
+            const showAP = document.getElementById('filter-ap').checked;
+            const showClient = document.getElementById('filter-client').checked;
+            const showGhost = document.getElementById('filter-ghost').checked;
+            const connectedOnly = document.getElementById('filter-connected').checked;
+            const vendorFilter = document.getElementById('filter-vendor').value;
+
+            if (!autoResetDone && allNodes.length > 0) {
+                autoResetDone = true;
+                showMapStatus('No nodes match filters; resetting to defaults.', 'info');
+                resetFilters(true);
+                return;
+            }
+
+            if (!showAP && !showClient && !showGhost) {
+                showMapStatus('Enable a device type filter to view nodes.', 'info');
+            } else if (connectedOnly && allEdges.length === 0) {
+                showMapStatus('No connections yet. Disable Connected Only to view nodes.', 'info');
+            } else if (vendorFilter !== 'all') {
+                showMapStatus('No nodes match the vendor filter.', 'info');
+            } else {
+                showMapStatus('No nodes match the current filters.', 'info');
+            }
+        } else {
+            hideMapStatus();
+        }
+
+        const data = {
+            nodes: new vis.DataSet(filteredNodes),
+            edges: new vis.DataSet(filteredEdges)
+        };
+
+        if (!network) {
+            if (!useIconFonts) {
+                options.nodes.shape = 'dot';
+                delete options.nodes.icon;
+            } else {
+                options.nodes.shape = 'icon';
+                options.nodes.icon = { face: ICON_FACE, size: 28, weight: '900' };
+            }
+            network = new vis.Network(container, data, options);
+
+            // Single click - show tooltip
+            network.on("click", function (params) {
+                if (params.nodes.length === 1) {
+                    selectedNodeId = params.nodes[0];
+                    showNodeTooltip(selectedNodeId, params.pointer.DOM);
+                } else {
+                    hideTooltip();
+                }
+            });
+
+            // Double click - go to dossier
+            network.on("doubleClick", function (params) {
+                if (params.nodes.length === 1) {
+                    const nodeId = params.nodes[0];
+                    const node = allNodes.find(n => n.id === nodeId);
+                    if (node && node.group === 'ble') {
+                        const targetAddr = node.mac || nodeId.replace('bt|', '');
+                        window.location.href = `/bluetooth/${targetAddr}`;
+                        return;
+                    }
+                    if (nodeId.includes(':')) {
+                        const targetMac = node && node.mac ? node.mac : nodeId;
+                        window.location.href = `/device/${targetMac}`;
+                    }
+                }
+            });
+
+            // Hover
+            network.on("hoverNode", function (params) {
+                container.style.cursor = 'pointer';
+            });
+            network.on("blurNode", function () {
+                container.style.cursor = 'default';
+            });
+        } else {
+            network.setData(data);
+        }
+
+        container.dataset.ready = "true";
+        window.WICAP_MAP_READY = true;
+        updateStats();
+    }
+
+    function filterNodes(nodes) {
+        const showAP = document.getElementById('filter-ap').checked;
+        const showClient = document.getElementById('filter-client').checked;
+        const showBLE = document.getElementById('filter-ble').checked;
+        const showGhost = document.getElementById('filter-ghost').checked;
+        const connectedOnly = document.getElementById('filter-connected').checked;
+        const vendorFilter = document.getElementById('filter-vendor').value;
+        const hasEdges = allEdges && allEdges.length > 0;
+
+        // Build set of connected node IDs if filter is active
+        let connectedIds = null;
+        if (connectedOnly && hasEdges) {
+            connectedIds = new Set();
+            allEdges.forEach(e => {
+                connectedIds.add(e.from);
+                connectedIds.add(e.to);
+            });
+        }
+
+        return nodes.filter(node => {
+            // Connected filter (highest priority)
+            if (connectedOnly && connectedIds && !connectedIds.has(node.id)) return false;
+
+            // Type filter
+            if (node.group === 'ap' && !showAP) return false;
+            if (node.group === 'client' && !showClient) return false;
+            if (node.group === 'ble' && !showBLE) return false;
+            if (node.group === 'ghost' && !showGhost) return false;
+            if (node.group === 'ap_ghost' && !showGhost) return false;
+
+            // RSSI Filter
+            const rssiFilterVal = document.getElementById('filter-rssi').value;
+            if (rssiFilterVal !== 'all' && node.rssi) {
+                const minRssi = parseInt(rssiFilterVal, 10);
+                // Filter out nodes with weaker signal than the threshold
+                // Note: RSSI is negative, so -80 < -70. We want RSSI >= minRssi
+                if (node.rssi < minRssi) return false;
+            }
+
+            // Vendor filter
+            if (vendorFilter !== 'all' && node.vendor) {
+                const v = node.vendor.toLowerCase();
+                if (vendorFilter === 'apple' && !v.includes('apple')) return false;
+                if (vendorFilter === 'samsung' && !v.includes('samsung')) return false;
+                if (vendorFilter === 'google' && !v.includes('google')) return false;
+                if (vendorFilter === 'intel' && !v.includes('intel')) return false;
+                if (vendorFilter === 'realtek' && !v.includes('realtek')) return false;
+            }
+
+            return true;
+        });
+    }
+
+    function filterEdges(edges, filteredNodes) {
+        const nodeIds = new Set(filteredNodes.map(n => n.id));
+        return edges.filter(edge => nodeIds.has(edge.from) && nodeIds.has(edge.to));
+    }
+
+    function applyFilters() {
+        if (getIncludeScavenger() !== lastIncludeScavenger) {
+            loadTopology();
+            return;
+        }
+        renderNetwork();
+    }
+
+    function resetFilters(reload = true) {
+        document.getElementById('filter-ap').checked = true;
+        document.getElementById('filter-client').checked = true;
+        document.getElementById('filter-ble').checked = true;
+        document.getElementById('filter-ghost').checked = false;
+        document.getElementById('filter-connected').checked = false;
+        document.getElementById('filter-vendor').value = 'all';
+        document.getElementById('filter-rssi').value = 'all';
+        if (reload) {
+            loadTopology(true);
+        } else {
+            renderNetwork();
+        }
+    }
+
+    function refreshMap() {
+        loadTopology();
+    }
+
+    function updateStats() {
+        const filteredNodes = filterNodes(allNodes);
+        const filteredEdges = filterEdges(allEdges, filteredNodes);
+        document.getElementById('node-count').textContent = filteredNodes.length;
+        document.getElementById('edge-count').textContent = filteredEdges.length;
+    }
+
+    function showNodeTooltip(nodeId, position) {
+        const node = allNodes.find(n => n.id === nodeId);
+        if (!node) return;
+
+        const tooltip = document.getElementById('node-tooltip');
+        const icon = document.getElementById('tooltip-icon');
+        const title = document.getElementById('tooltip-title');
+        const content = document.getElementById('tooltip-content');
+
+        if (node.group === 'ap') {
+            icon.innerHTML = '<i class="fas fa-wifi"></i>';
+        } else if (node.group === 'ble') {
+            icon.innerHTML = '<i class="fab fa-bluetooth-b"></i>';
+        } else if (node.group === 'ghost' || node.group === 'ap_ghost') {
+            icon.innerHTML = '<i class="fas fa-ghost"></i>';
+        } else {
+            icon.innerHTML = '<i class="fas fa-mobile-alt"></i>';
+        }
+        title.textContent = node.label || node.id;
+
+        content.innerHTML = `
+            <div><strong>MAC:</strong> ${node.mac || node.id}</div>
+            ${node.vendor ? `<div><strong>Vendor:</strong> ${node.vendor}</div>` : ''}
+            ${node.channel ? `<div><strong>Channel:</strong> ${node.channel}</div>` : ''}
+            ${node.rssi ? `<div><strong>RSSI:</strong> ${node.rssi} dBm</div>` : ''}
+            ${node.distance ? `<div><strong>Approx. Dist:</strong> ~${node.distance} m</div>` : ''}
+            ${node.group === 'ble' ? '<div class="ghost-tag"><i class="fab fa-bluetooth-b"></i> Bluetooth (BLE)</div>' : ''}
+            ${node.group === 'ghost' || node.group === 'ap_ghost' ? '<div class="ghost-tag"><i class="fas fa-ghost"></i> Historical (Scavenger)</div>' : ''}
+        `;
+
+        tooltip.style.display = 'block';
+        tooltip.style.left = Math.min(position.x + 20, window.innerWidth - 300) + 'px';
+        tooltip.style.top = Math.min(position.y + 20, window.innerHeight - 200) + 'px';
+    }
+
+    function hideTooltip() {
+        document.getElementById('node-tooltip').style.display = 'none';
+        selectedNodeId = null;
+    }
+
+    function viewDossier() {
+        if (!selectedNodeId) return;
+        const node = allNodes.find(n => n.id === selectedNodeId);
+        if (node && node.group === 'ble') {
+            const targetAddr = node.mac || selectedNodeId.replace('bt|', '');
+            window.location.href = `/bluetooth/${targetAddr}`;
+            return;
+        }
+        if (selectedNodeId.includes(':')) {
+            const targetMac = node && node.mac ? node.mac : selectedNodeId;
+            window.location.href = `/device/${targetMac}`;
+        }
+    }
+
+    // Close tooltip on click outside
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('#mynetwork') && !e.target.closest('#node-tooltip')) {
+            hideTooltip();
+        }
+    });
+
+    // Initial load
+    loadTopology(true);
+
+    // Auto-refresh every 30s
+    setInterval(loadTopology, 30000);
+</script>
+
+<style>
+    .map-container {
+        position: relative;
+        height: calc(100vh - 140px);
+        display: flex;
+        gap: 15px;
+    }
+
+    #mynetwork {
+        flex: 1;
+        border: var(--glass-border);
+        border-radius: var(--radius-lg);
+        background: var(--bg-primary);
+    }
+
+    .map-filters {
+        width: 250px;
+        padding: 1rem;
+        height: fit-content;
+        max-height: calc(100vh - 160px);
+        overflow-y: auto;
+    }
+
+    .map-filters h3 {
+        font-size: 1rem;
+        margin-bottom: 1rem;
+        color: var(--text-primary);
+    }
+
+    .filter-group {
+        margin-bottom: 1rem;
+    }
+
+    .filter-group label {
+        display: block;
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        margin-bottom: 0.5rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .filter-checkboxes {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .checkbox-label {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        cursor: pointer;
+        font-size: 0.9rem;
+    }
+
+    .checkbox-icon {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+    }
+
+    .checkbox-icon.ap {
+        background: #58a6ff;
+    }
+
+    .checkbox-icon.client {
+        background: #3fb950;
+    }
+
+    .checkbox-icon.ble {
+        background: #8b5cf6;
+    }
+
+    .checkbox-icon.ghost {
+        background: #8b949e;
+    }
+
+    .filter-group select {
+        width: 100%;
+        padding: 0.5rem;
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius);
+        color: var(--text-primary);
+        font-size: 0.9rem;
+    }
+
+    .filter-actions {
+        display: flex;
+        gap: 0.5rem;
+        margin-top: 1rem;
+    }
+
+    .filter-stats {
+        margin-top: 1rem;
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        text-align: center;
+    }
+
+    .map-legend {
+        position: absolute;
+        bottom: 20px;
+        right: 20px;
+        padding: 1rem;
+        width: 180px;
+    }
+
+    .map-status {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        padding: 1rem 1.5rem;
+        font-size: 0.95rem;
+        color: var(--text-secondary);
+        border: var(--glass-border);
+        background: var(--glass-bg);
+        text-align: center;
+        z-index: 2;
+    }
+
+    .map-status[data-tone="error"] {
+        color: var(--accent-red);
+        border-color: rgba(248, 81, 73, 0.35);
+    }
+
+    .map-legend h4 {
+        font-size: 0.9rem;
+        margin-bottom: 0.75rem;
+        color: var(--text-secondary);
+    }
+
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.8rem;
+        margin-bottom: 6px;
+        color: var(--text-secondary);
+    }
+
+    .node-tooltip {
+        position: fixed;
+        padding: 1rem;
+        min-width: 220px;
+        max-width: 300px;
+        z-index: 1000;
+    }
+
+    .tooltip-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 600;
+        margin-bottom: 0.75rem;
+        color: var(--text-primary);
+    }
+
+    .tooltip-body {
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+        margin-bottom: 0.75rem;
+    }
+
+    .tooltip-body div {
+        margin-bottom: 4px;
+    }
+
+    .ghost-tag {
+        color: var(--text-muted);
+        font-style: italic;
+        margin-top: 8px;
+    }
+
+    .tooltip-footer {
+        border-top: 1px solid var(--border-color);
+        padding-top: 0.75rem;
+    }
+
+    .btn-sm {
+        padding: 0.375rem 0.75rem;
+        font-size: 0.8rem;
+    }
+</style>
+{% endblock %}

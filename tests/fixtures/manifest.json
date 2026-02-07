@@ -1,0 +1,23 @@
+{
+  "description": "WICAP Replay Test Fixtures",
+  "fixtures": [
+    {
+      "name": "mixed_traffic_ch2",
+      "pcap": "tests/fixtures/pcap/mixed_traffic_ch2.pcapng",
+      "expected": "tests/fixtures/events/mixed_traffic_ch2.expected.jsonl",
+      "description": "30-second mixed traffic capture on channel 2"
+    },
+    {
+      "name": "open_hidden_deauth_ch6",
+      "pcap": "tests/fixtures/pcap/open_hidden_deauth_ch6.pcapng",
+      "expected": "tests/fixtures/events/open_hidden_deauth_ch6.expected.jsonl",
+      "description": "Synthetic open network, hidden SSID, and deauth spike on channel 6"
+    },
+    {
+      "name": "deauth_single_ch1",
+      "pcap": "tests/fixtures/pcap/deauth_single_ch1.pcapng",
+      "expected": "tests/fixtures/events/deauth_single_ch1.expected.jsonl",
+      "description": "Single deauth frame to cover non-spike deauth event on channel 1"
+    }
+  ]
+}

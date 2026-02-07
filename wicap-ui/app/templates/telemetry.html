@@ -1,0 +1,879 @@
+{% extends "base.html" %}
+
+{% block title %}Telemetry Analysis - WICAP{% endblock %}
+
+{% block content %}
+<div class="dashboard telemetry-dashboard">
+    <header class="page-header">
+        <div class="header-split">
+            <div>
+                <h1><i class="fas fa-satellite-dish"></i> Total Telemetry</h1>
+                <p>Radio environment visualization and signal intelligence</p>
+            </div>
+            <div class="header-stats-grid">
+                <div class="stat-item-mini">
+                    <span class="label">TOTAL PACKETS</span>
+                    <span class="value" id="stats-total-packets">0</span>
+                </div>
+                <div class="stat-item-mini">
+                    <span class="label">EPS</span>
+                    <span class="value" id="stats-eps">0.0</span>
+                </div>
+                <div class="stat-item-mini">
+                    <span class="label">WINDOW COUNT</span>
+                    <span class="value" id="stats-window">0</span>
+                </div>
+            </div>
+            <div class="header-actions">
+                <span class="status-badge status-badge--live">
+                    <span class="pulse-dot"></span>
+                    Live
+                </span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Anomaly Ticker -->
+    <div class="anomaly-ticker glass-card">
+        <div class="ticker-label"><i class="fas fa-exclamation-triangle"></i> ANOMALIES</div>
+        <div class="ticker-content" id="anomaly-ticker">
+            <span class="ticker-item">Monitoring for unusual events...</span>
+        </div>
+    </div>
+
+    <!-- Row 1: Spectrum Waterfall & Signal Timeseries -->
+    <div class="telemetry-row">
+        <section class="glass-card" style="flex: 2; position: relative;">
+            <h3><i class="fas fa-water"></i> Spectrum Waterfall</h3>
+            <div class="waterfall-container" style="position: relative;">
+                <canvas id="waterfallCanvas"></canvas>
+                <div class="waterfall-legend">
+                    <span class="legend-low">Low</span>
+                    <div class="legend-gradient"></div>
+                    <span class="legend-high">High</span>
+                </div>
+                <!-- Channel Labels moved inside for perfect anchor -->
+                <div class="channel-labels" id="channelLabels"></div>
+            </div>
+        </section>
+
+        <section class="glass-card" style="flex: 1;">
+            <h3><i class="fas fa-chart-line"></i> Signal Timeseries</h3>
+            <div class="chart-container-tall">
+                <canvas id="rssiTimeseriesChart"></canvas>
+            </div>
+            <div class="timeseries-targets" id="targetSelector">
+                <!-- Dynamically populated -->
+            </div>
+        </section>
+    </div>
+
+    <!-- Row 2: Analytics Grid -->
+    <div class="charts-grid-dense">
+        <section class="glass-card chart-card-sm">
+            <h3><i class="fas fa-broadcast-tower"></i> Channel Activity</h3>
+            <div class="chart-container-sm">
+                <canvas id="channelChart"></canvas>
+            </div>
+        </section>
+        <section class="glass-card chart-card-sm">
+            <h3><i class="fas fa-industry"></i> Vendor Ecosystem</h3>
+            <div class="chart-container-sm">
+                <canvas id="vendorChart"></canvas>
+            </div>
+        </section>
+        <section class="glass-card chart-card-sm">
+            <h3><i class="fas fa-layer-group"></i> Event Types</h3>
+            <div class="chart-container-sm">
+                <canvas id="typeChart"></canvas>
+            </div>
+        </section>
+    </div>
+
+    <!-- Packet Stream Table -->
+    <section class="glass-card">
+        <h3><i class="fas fa-microscope"></i> Packet Stream</h3>
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Type <input type="text" class="filter-input" placeholder="Filter..."
+                                onkeyup="filterTable(1)"></th>
+                        <th>Ch</th>
+                        <th>RSSI</th>
+                        <th>Source <input type="text" class="filter-input" placeholder="MAC..."
+                                onkeyup="filterTable(4)"></th>
+                        <th>Dest</th>
+                        <th>Vendor</th>
+                        <th>Context</th>
+                    </tr>
+                </thead>
+                <tbody id="telemetry-body">
+                    <tr>
+                        <td colspan="8">Loading live telemetry...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+
+<style>
+    :root {
+        --glass-bg: rgba(13, 17, 23, 0.7);
+        --glass-border: 1px solid rgba(255, 255, 255, 0.08);
+        --accent-glow: rgba(88, 166, 255, 0.3);
+    }
+
+    .telemetry-dashboard {
+        animation: fadeIn 0.8s ease-out;
+    }
+
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .telemetry-row {
+        display: flex;
+        align-items: stretch;
+        gap: 20px;
+        margin-bottom: 25px;
+    }
+
+    /* Glass Card Refinement */
+    .glass-card {
+        background: var(--glass-bg);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: var(--glass-border);
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+        transition: border-color 0.3s, box-shadow 0.3s;
+    }
+
+    .glass-card:hover {
+        border-color: rgba(88, 166, 255, 0.2);
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6), 0 0 20px var(--accent-glow);
+    }
+
+    .header-stats-grid {
+        display: flex;
+        gap: 20px;
+        justify-content: flex-end;
+        flex: 1;
+    }
+
+    .stat-item-mini {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        padding: 5px 15px;
+        border-right: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .stat-item-mini:last-child {
+        border-right: none;
+    }
+
+    .channel-labels {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 25px;
+        font-size: 0.75rem;
+        color: rgba(255, 255, 255, 0.6);
+        font-family: 'Consolas', 'Monaco', monospace;
+        background: rgba(13, 17, 23, 0.8);
+        backdrop-filter: blur(4px);
+        pointer-events: none;
+        /* Don't block canvas clicks if any */
+        display: flex;
+        align-items: center;
+        border-top: 1px solid rgba(88, 166, 255, 0.2);
+    }
+
+    .channel-tick {
+        position: absolute;
+        bottom: 100%;
+        width: 1px;
+        height: 4px;
+        background: rgba(88, 166, 255, 0.5);
+    }
+
+    .stat-item-mini .label {
+        font-size: 0.65rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+    }
+
+    .stat-item-mini .value {
+        font-size: 1.3rem;
+        font-weight: 800;
+        color: var(--accent-blue);
+        text-shadow: 0 0 12px rgba(88, 166, 255, 0.4);
+    }
+
+    /* Balanced Table Layout */
+    .table-container {
+        max-height: 450px;
+        overflow-y: auto;
+        border-radius: var(--radius);
+        margin-top: 10px;
+    }
+
+    .data-table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+    }
+
+    .data-table th {
+        position: sticky;
+        top: 0;
+        background: rgba(13, 17, 23, 0.95);
+        z-index: 10;
+        padding: 12px 15px;
+        text-align: left;
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: var(--text-muted);
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    /* Fixed Column Widths for Balance */
+    .data-table th:nth-child(1) {
+        width: 100px;
+    }
+
+    /* Time */
+    .data-table th:nth-child(2) {
+        width: 120px;
+    }
+
+    /* Type */
+    .data-table th:nth-child(3) {
+        width: 60px;
+    }
+
+    /* Ch */
+    .data-table th:nth-child(4) {
+        width: 80px;
+    }
+
+    /* RSSI */
+    .data-table th:nth-child(5) {
+        width: 160px;
+    }
+
+    /* Source */
+    .data-table th:nth-child(6) {
+        width: 160px;
+    }
+
+    /* Dest */
+    .data-table th:nth-child(7) {
+        width: 140px;
+    }
+
+    /* Vendor */
+    .data-table th:nth-child(8) {
+        width: auto;
+    }
+
+    /* Context */
+
+    .data-table td {
+        padding: 10px 15px;
+        font-size: 0.85rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+        vertical-align: middle;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .data-table tr.fade-in {
+        animation: trIn 0.3s ease-out;
+    }
+
+    @keyframes trIn {
+        from {
+            opacity: 0;
+            background: rgba(88, 166, 255, 0.1);
+        }
+
+        to {
+            opacity: 1;
+            background: transparent;
+        }
+    }
+
+    /* Premium Charts Grid */
+    .charts-grid-dense {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 20px;
+        margin-bottom: 25px;
+    }
+
+    .chart-card-sm {
+        min-height: 250px;
+    }
+
+    .chart-container-sm {
+        height: 180px;
+        position: relative;
+    }
+
+    /* Signal Timeseries Height Restoration */
+    .chart-container-tall {
+        height: 380px;
+        /* Restored for prominence */
+        min-height: 300px;
+        position: relative;
+    }
+
+    /* Spectrum Waterfall Height */
+    .waterfall-container {
+        height: 380px;
+        /* Match timeseries for balance */
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        background: #05070a;
+    }
+
+    .legend-gradient {
+        width: 100px;
+        height: 6px;
+        background: linear-gradient(to right, #1a237e, #c832c8, #ff9600, #ffffc8);
+        border-radius: 10px;
+        box-shadow: 0 0 10px rgba(255, 150, 0, 0.3);
+    }
+</style>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // --- 1. Global State & Charts ---
+        const stats = {
+            packets: 0,
+            startTime: Date.now(),
+            types: new Counter(),
+            channels: new Counter(),
+            vendors: new Counter(),
+            targets: new Set()
+        };
+
+        function Counter() {
+            this.counts = {};
+            this.add = (key) => { this.counts[key] = (this.counts[key] || 0) + 1; };
+            this.getTop = (n) => Object.entries(this.counts).sort((a, b) => b[1] - a[1]).slice(0, n);
+        }
+
+        const commonOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: { duration: 400 },
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { display: true, grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#8b949e', font: { size: 10 } } },
+                y: { display: true, grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#8b949e', font: { size: 10 } } }
+            }
+        };
+
+        // RSSI Timeseries
+        const rssiCtx = document.getElementById('rssiTimeseriesChart').getContext('2d');
+        const rssiGradient = rssiCtx.createLinearGradient(0, 0, 0, 200);
+        rssiGradient.addColorStop(0, 'rgba(88, 166, 255, 0.4)');
+        rssiGradient.addColorStop(1, 'rgba(57, 197, 207, 0.05)');
+
+        const rssiChart = new Chart(rssiCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'RSSI',
+                    data: [],
+                    borderColor: '#58a6ff',
+                    borderWidth: 2,
+                    fill: 'start',
+                    backgroundColor: rssiGradient,
+                    tension: 0.4,
+                    pointRadius: 0,
+                    pointHoverRadius: 5,
+                    borderJoinStyle: 'round',
+                    cubicInterpolationMode: 'monotone'
+                }]
+            },
+            options: {
+                ...commonOptions,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { enabled: true, backgroundColor: 'rgba(13, 17, 23, 0.9)', titleColor: '#8b949e' }
+                },
+                scales: {
+                    y: {
+                        min: -100,
+                        max: -20,
+                        grid: { color: 'rgba(255,255,255,0.03)' },
+                        ticks: { color: '#8b949e', font: { size: 9 } }
+                    },
+                    x: { grid: { display: false }, ticks: { display: false } }
+                }
+            }
+        });
+
+        // Mini Charts
+        const createMiniChart = (id, type, colorScheme) => {
+            const isDoughnut = type === 'doughnut';
+            const ctx = document.getElementById(id).getContext('2d');
+
+            let finalColors = colorScheme;
+            if (type === 'bar') {
+                // Vertical Gradient for Bars
+                const grad = ctx.createLinearGradient(0, 0, 0, 180);
+                grad.addColorStop(0, '#3fb950'); // Green
+                grad.addColorStop(1, '#39c5cf'); // Cyan
+                finalColors = grad;
+            }
+
+            return new Chart(ctx, {
+                type: type,
+                data: {
+                    labels: [], datasets: [{
+                        data: [],
+                        backgroundColor: finalColors,
+                        borderWidth: isDoughnut ? 2 : 0,
+                        borderColor: 'rgba(255,255,255,0.05)',
+                        borderRadius: type === 'bar' ? 4 : 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: isDoughnut,
+                            position: 'right',
+                            labels: { color: '#8b949e', font: { size: 10 }, padding: 8, boxWidth: 10 }
+                        }
+                    },
+                    scales: isDoughnut ? {} : {
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: '#8b949e', font: { size: 9 } },
+                            maxBarThickness: 35, // Corrected placement for Chart.js bar constraints
+                        },
+                        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8b949e', font: { size: 9 } } }
+                    }
+                }
+            });
+        };
+
+        const neonColors = ['#58a6ff', '#a371f7', '#3fb950', '#d29922', '#f85149', '#39c5cf'];
+        const typesChart = createMiniChart('typeChart', 'doughnut', neonColors);
+        const channelsChart = createMiniChart('channelChart', 'bar', '#3fb950');
+        const vendorsChart = createMiniChart('vendorChart', 'doughnut', neonColors);
+
+        // --- 2. Waterfall Canvas (Advanced Magma Engine) ---
+        // Display Channels: 2.4GHz + Common 5GHz (Non-DFS + some DFS)
+        const DISPLAY_CHANNELS = [
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
+            36, 40, 44, 48, 52, 56, 60, 64,
+            100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140, 144,
+            149, 153, 157, 161, 165
+        ];
+        // Channel Index Map for O(1) lookup
+        const CHANNEL_MAP = {};
+        DISPLAY_CHANNELS.forEach((ch, i) => CHANNEL_MAP[ch] = i);
+
+        // Store energy levels
+        const channelEnergy = new Float32Array(DISPLAY_CHANNELS.length).fill(0.0);
+        const ambientWaterfall = window.WICAP_TELEMETRY_AMBIENT === true || window.WICAP_TELEMETRY_AMBIENT === '1';
+        let lastScroll = 0;
+        let width, height;
+
+        function renderChannels() {
+            const labelsContainer = document.getElementById('channelLabels');
+            labelsContainer.innerHTML = '';
+            const keyChannels = [1, 6, 11, 36, 64, 100, 149];
+
+            DISPLAY_CHANNELS.forEach((ch, i) => {
+                const percent = (i / DISPLAY_CHANNELS.length) * 100;
+                const slotWidthPercent = (1 / DISPLAY_CHANNELS.length) * 100;
+                const centerPercent = percent + (slotWidthPercent / 2);
+
+                if (keyChannels.includes(ch)) {
+                    // Create Label
+                    const span = document.createElement('span');
+                    span.innerText = ch;
+                    span.style.position = 'absolute';
+                    span.style.left = `${centerPercent}%`;
+                    span.style.top = '8px'; // Adjust for tick
+                    span.style.transform = 'translateX(-50%)';
+                    labelsContainer.appendChild(span);
+
+                    // Create Tick
+                    const tick = document.createElement('div');
+                    tick.className = 'channel-tick';
+                    tick.style.left = `${centerPercent}%`;
+                    labelsContainer.appendChild(tick);
+                }
+            });
+        }
+        const canvas = document.getElementById('waterfallCanvas');
+        const ctx = canvas.getContext('2d', { alpha: false });
+        function getColorForRSSI(rssi) {
+            // Enhanced Thermal Color Map (-98 to -30 dBm)
+            // Silence/Noise Floor (-98) = Deep Blue/Indigo
+            // Ambient Activity (-85) = Visible Purple
+            // Signal Hit (-60) = Vibrant Red/Magenta
+            // Peak High (-40) = Bright Yellow/White
+            const normalized = Math.max(0, Math.min(1, (rssi + 100) / 70));
+
+            let r, g, b;
+            if (normalized < 0.2) {
+                // Noise floor: Deep Indigo to Cobalt
+                const t = normalized / 0.2;
+                r = Math.floor(10 + t * 40);
+                g = Math.floor(15 + t * 40);
+                b = Math.floor(60 + t * 100);
+            } else if (normalized < 0.45) {
+                // Low Signal: Cobalt to Magenta
+                const t = (normalized - 0.2) / 0.25;
+                r = Math.floor(50 + t * 180);
+                g = Math.floor(55 + t * 20);
+                b = Math.floor(160 + t * 95);
+            } else if (normalized < 0.75) {
+                // Mid Signal: Magenta to Orange/Red
+                const t = (normalized - 0.45) / 0.3;
+                r = 255;
+                g = Math.floor(50 + t * 150);
+                b = Math.floor(255 * (1 - t * 1.5));
+                b = Math.max(0, b);
+            } else {
+                // High Signal: Orange to White
+                const t = (normalized - 0.75) / 0.25;
+                r = 255;
+                g = Math.floor(200 + t * 55);
+                b = Math.floor(t * 255);
+            }
+            return `rgb(${r},${g},${b})`;
+        }
+        // Create off-screen buffer for waterfall
+        const bufferCanvas = document.createElement('canvas');
+        const bufferCtx = bufferCanvas.getContext('2d', { alpha: false });
+
+        function resizeCanvas() {
+            width = canvas.width = canvas.parentElement.offsetWidth;
+            height = canvas.height = canvas.parentElement.offsetHeight;
+            bufferCanvas.width = width;
+            bufferCanvas.height = height;
+
+            ctx.fillStyle = '#0d1117';
+            ctx.fillRect(0, 0, width, height);
+            bufferCtx.fillStyle = '#0d1117';
+            bufferCtx.fillRect(0, 0, width, height);
+            renderChannels();
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+
+
+        // (renderChannels moved to Persistent Energy Model section)
+
+        // --- 3. Persistent Energy Model ---
+        // Display Channels: 2.4GHz + Common 5GHz (Non-DFS + some DFS)
+
+
+        function renderWaterfallFrame() {
+            // 1. Shift buffer down
+            bufferCtx.drawImage(bufferCanvas, 0, 0, width, height - 2, 0, 2, width, height - 2);
+
+            // 2. Clear new top row
+            bufferCtx.fillStyle = '#0d1117';
+            bufferCtx.fillRect(0, 0, width, 2);
+
+            // 3. Render all display channels
+            const totalSlots = DISPLAY_CHANNELS.length;
+
+            for (let i = 0; i < totalSlots; i++) {
+                // Decay
+                channelEnergy[i] *= 0.94; // Keep signal a bit longer for visual persistence
+
+                // Disable synthetic strobing by default; optional ambient mode for demos.
+                const noise = ambientWaterfall ? (0.01 + Math.random() * 0.03) : 0;
+                const activeLevel = Math.max(channelEnergy[i], noise);
+
+                // Map -100 to -30 based on activeLevel
+                const color = getColorForRSSI(-100 + (activeLevel * 70));
+
+                // Position based on Index in Display List
+                const slotWidth = width / totalSlots;
+                bufferCtx.fillStyle = color;
+                if (channelEnergy[i] > 0.4) {
+                    bufferCtx.shadowBlur = 12 * channelEnergy[i];
+                    bufferCtx.shadowColor = color;
+                } else {
+                    bufferCtx.shadowBlur = 0;
+                }
+
+                bufferCtx.fillRect(i * slotWidth + 1, 0, slotWidth - 2, 2);
+            }
+            bufferCtx.shadowBlur = 0;
+            ctx.drawImage(bufferCanvas, 0, 0);
+        }
+
+        function animateWaterfall(timestamp) {
+            if (timestamp - lastScroll > 33) { // ~30 FPS
+                renderWaterfallFrame();
+                lastScroll = timestamp;
+            }
+            requestAnimationFrame(animateWaterfall);
+        }
+        requestAnimationFrame(animateWaterfall);
+
+        // --- 4. Socket Logic & Data Handling ---
+        const feedBody = document.getElementById('telemetry-body');
+        const ticker = document.getElementById('anomaly-ticker');
+        const includeBluetooth = window.WICAP_TELEMETRY_INCLUDE_BT === true || window.WICAP_TELEMETRY_INCLUDE_BT === '1';
+
+        function isBluetoothEvent(event) {
+            if (!event || typeof event !== 'object') {
+                return false;
+            }
+            const eventType = String(event.event_type || '').toLowerCase();
+            const protocol = String(event.protocol || event.payload?.protocol || '').toLowerCase();
+            return protocol === 'bt' || eventType.startsWith('bt_');
+        }
+
+        function shouldRenderTelemetryEvent(event) {
+            const eventType = String(event?.event_type || '').toLowerCase();
+            if (eventType === 'telemetry_pulse' || eventType === 'summary') {
+                return false;
+            }
+            if (!includeBluetooth && isBluetoothEvent(event)) {
+                return false;
+            }
+            return true;
+        }
+
+        socket.on('new_packet', (event) => {
+            if (typeof wicapAcceptEvent === 'function' && !wicapAcceptEvent(event)) return;
+            if (!shouldRenderTelemetryEvent(event)) return;
+            stats.packets++;
+            const channel = event.channel;
+            const rssi = parseInt(event.keys?.rssi_dbm || event.payload?.rssi || -100);
+
+            // Update Energy State
+            if (channel && CHANNEL_MAP.hasOwnProperty(channel)) {
+                const idx = CHANNEL_MAP[channel];
+
+                // Normalize RSSI matching Color Func (-98 to -48)
+                let strength = (rssi + 98) / 50;
+                strength = Math.max(0, Math.min(1, strength));
+
+                // Boost weak signals artificially to make them pop
+                if (strength < 0.3) strength *= 1.5;
+
+                // Jump energy to this level (or boost it)
+                channelEnergy[idx] = Math.max(channelEnergy[idx], strength);
+            }
+
+            // Update internal counters
+            stats.types.add(event.event_type);
+            if (channel) stats.channels.add(channel);
+            // Default to 'Unknown' if vendor is missing/null so chart isn't empty
+            stats.vendors.add(event.vendor || 'Unknown');
+
+            // Trigger immediate chart flash on activity
+            if (stats.packets % 5 === 0) {
+                updateStatsCharts();
+            }
+
+            // Buffer for RSSI history (allow -100 and up)
+            if (rssi >= -100) { rssiBuffer.push(rssi); }
+
+            // Update Feed Table
+            addToTable(event);
+        });
+
+        socket.on('telemetry_summary', (summary) => {
+            if (typeof wicapAcceptEvent === 'function' && !wicapAcceptEvent(summary)) return;
+            // Periodic sync from backend
+            updateStatsCharts();
+        });
+
+        let rssiBuffer = [];
+        setInterval(() => {
+            if (rssiBuffer.length === 0) {
+                // Decay line to noise floor if no data
+                rssiChart.data.datasets[0].data.push(-100);
+            } else {
+                const avg = rssiBuffer.reduce((a, b) => a + b, 0) / rssiBuffer.length;
+                rssiChart.data.datasets[0].data.push(avg);
+            }
+
+            const now = new Date().toLocaleTimeString();
+            rssiChart.data.labels.push(now);
+
+            // Keep more points for faster update (500ms * 200 = 100s history)
+            if (rssiChart.data.labels.length > 200) {
+                rssiChart.data.labels.shift();
+                rssiChart.data.datasets[0].data.shift();
+            }
+            rssiChart.update('none');
+            rssiBuffer = [];
+
+            // Also update the mini charts every 4 ticks (2 seconds) to save CPU
+            if (rssiChart.data.labels.length % 4 === 0) {
+                updateStatsCharts();
+            }
+        }, 500); // 500ms update for realtime feel
+
+        function updateStatsCharts() {
+            const updateChart = (chart, counter) => {
+                const top = counter.getTop(8);
+                chart.data.labels = top.map(t => t[0]);
+                chart.data.datasets[0].data = top.map(t => t[1]);
+                chart.update('none');
+            };
+            updateChart(typesChart, stats.types);
+            updateChart(channelsChart, stats.channels);
+            updateChart(vendorsChart, stats.vendors);
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function sanitizeDisplayText(value, maxLen = 96) {
+            if (value === null || value === undefined) {
+                return '';
+            }
+            const raw = String(value);
+            const normalized = typeof raw.normalize === 'function' ? raw.normalize('NFKC') : raw;
+            const withoutControls = normalized
+                .replace(/\uFFFD/g, ' ')
+                .replace(/[\u0000-\u001F\u007F-\u009F]/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+            if (!withoutControls) {
+                return '';
+            }
+            const ascii = typeof withoutControls.normalize === 'function'
+                ? withoutControls.normalize('NFKD').replace(/[^\x20-\x7E]/g, '')
+                : withoutControls;
+            return ascii.slice(0, maxLen).trim();
+        }
+
+        function addToTable(ev) {
+            const row = document.createElement('tr');
+            row.className = 'fade-in';
+            const keys = ev.keys || {};
+            const srcRaw = sanitizeDisplayText(keys.sa || ev.source, 17);
+            const src = srcRaw || '-';
+            const srcHref = srcRaw ? encodeURIComponent(srcRaw) : '';
+            const macLink = srcRaw
+                ? `<a href="/device/${srcHref}" class="mac-link">${escapeHtml(src)}</a>`
+                : '-';
+            const eventType = sanitizeDisplayText(ev.event_type, 64) || '-';
+            const channel = sanitizeDisplayText(ev.channel, 8) || '-';
+            const rssiValue = Number.isFinite(Number(keys.rssi_dbm ?? ev.payload?.rssi))
+                ? Number(keys.rssi_dbm ?? ev.payload?.rssi)
+                : null;
+            const rssiText = rssiValue === null ? '-' : String(rssiValue);
+            const dest = sanitizeDisplayText(keys.da || ev.dest, 17) || '-';
+            const vendor = sanitizeDisplayText(ev.vendor, 64) || '-';
+            const context = sanitizeDisplayText(ev.ssid || keys.ssid, 96) || '-';
+
+            row.innerHTML = `
+                <td>${new Date().toLocaleTimeString()}</td>
+                <td><span class="badge badge-neutral">${escapeHtml(eventType)}</span></td>
+                <td>${escapeHtml(channel)}</td>
+                <td style="color: ${getRSSIColor(rssiValue ?? -100)}">${escapeHtml(rssiText)}</td>
+                <td>${macLink}</td>
+                <td>${escapeHtml(dest)}</td>
+                <td>${escapeHtml(vendor)}</td>
+                <td><small>${escapeHtml(context)}</small></td>
+            `;
+            if (feedBody.innerHTML.includes('Loading')) feedBody.innerHTML = '';
+            feedBody.prepend(row);
+            if (feedBody.children.length > 25) feedBody.removeChild(feedBody.lastChild);
+        }
+
+        function getRSSIColor(rssi) {
+            if (rssi > -55) return 'var(--accent-green)';
+            if (rssi > -75) return 'var(--accent-yellow)';
+            return 'var(--text-muted)';
+        }
+
+        socket.on('anomaly', (data) => {
+            if (typeof wicapAcceptEvent === 'function' && !wicapAcceptEvent(data)) return;
+            const item = document.createElement('span');
+            item.className = 'ticker-item alert';
+            item.innerHTML = `<i class="fas fa-biohazard"></i> ${data.type.toUpperCase()}: ${data.target}`;
+            ticker.prepend(item);
+            if (ticker.children.length > 5) ticker.removeChild(ticker.lastChild);
+        });
+
+        // Initial Data Fetch
+        const sourceParam = window.WICAP_DATA_SOURCE && window.WICAP_DATA_SOURCE !== 'live'
+            ? `?source=${window.WICAP_DATA_SOURCE}`
+            : '';
+        fetch(`/api/telemetry/stats${sourceParam}`).then(r => r.json()).then(data => {
+            console.log('API telemetry/stats response:', data);
+            if (data.error) {
+                console.error('Telemetry stats error:', data.error);
+                return;
+            }
+            // Populate counters from API data
+            if (data.types && data.types.labels) {
+                data.types.labels.forEach((l, i) => stats.types.counts[l] = data.types.data[i]);
+            }
+            if (data.channels && data.channels.labels) {
+                data.channels.labels.forEach((l, i) => stats.channels.counts[l] = data.channels.data[i]);
+            }
+            if (data.vendors && data.vendors.labels) {
+                data.vendors.labels.forEach((l, i) => stats.vendors.counts[l] = data.vendors.data[i]);
+            }
+            // Force immediate chart update
+            updateStatsCharts();
+            console.log('Charts updated with initial data');
+        });
+
+        // Update stats items loop
+        setInterval(() => {
+            const totalPacketsEl = document.getElementById('stats-total-packets');
+            const epsEl = document.getElementById('stats-eps');
+            const windowEl = document.getElementById('stats-window');
+
+            if (totalPacketsEl) totalPacketsEl.textContent = stats.packets.toLocaleString();
+
+            const elapsed = (Date.now() - stats.startTime) / 1000;
+            const eps = (stats.packets / Math.max(1, elapsed)).toFixed(1);
+            if (epsEl) epsEl.textContent = eps;
+
+            // Window count = total events in local counters
+            const windowCount = Object.values(stats.types.counts).reduce((a, b) => a + b, 0);
+            if (windowEl) windowEl.textContent = windowCount.toLocaleString();
+        }, 1000);
+    });
+</script>
+{% endblock %}

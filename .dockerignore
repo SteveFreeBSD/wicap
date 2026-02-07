@@ -1,0 +1,35 @@
+.git
+.venv/
+.venv-e2e/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Secrets (never bake into image layers)
+.env
+.env.*
+*.local
+
+# Large runtime data dirs (mounted at runtime)
+captures/
+captures_verify/
+logs/
+logs_soak_*/
+backups/
+scavenger_output/
+wicap_redis_data/
+
+# Large optional data
+nexus/wordlists/
+
+# Build/test artifacts
+tests/screenshots/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Native build artifacts
+native/**/target/

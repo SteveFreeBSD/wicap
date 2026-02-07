@@ -1,0 +1,75 @@
+[project]
+name = "wicap"
+version = "4.0.0"
+description = "WiFi Capture and Password Auditing Platform"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "WICAP Team"}
+]
+keywords = ["wifi", "security", "capture", "auditing", "pcap"]
+
+dependencies = [
+    "scapy>=2.5.0,<3.0",
+    "pyodbc>=5.1.0,<6.0",
+    "rich>=13.0.0,<14.0",
+    "pandas>=2.0.0,<3.0",
+    "numpy>=1.26.0,<2.0",
+    "emoji>=2.0.0,<3.0",
+    "requests>=2.31.0,<3.0",
+]
+
+[project.optional-dependencies]
+ui = [
+    "fastapi>=0.109.0,<1.0",
+    "uvicorn[standard]>=0.27.0,<1.0",
+    "jinja2>=3.1.3,<4.0",
+    "python-multipart>=0.0.9,<1.0",
+    "websockets>=12.0,<13.0",
+    "httpx>=0.27.0,<1.0",
+    "python-socketio>=5.11.0,<6.0",
+    "aiohttp>=3.9.0,<4.0",
+    "docker>=7.0.0,<8.0",
+    "pydantic>=2.0.0,<3.0",
+]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "mypy>=1.8.0",
+    "ruff>=0.3.0",
+]
+
+[project.scripts]
+wicap = "wicap.start_wicap:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["nexus"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "C4", "UP"]
+ignore = ["E501"]  # Line too long - handled separately
+
+[tool.ruff.lint.per-file-ignores]
+"tools/bluetooth/SnifferAPI/*.py" = ["E402", "E721", "E722", "F403", "F405", "F811", "UP031"]
+"tools/bluetooth/extcap/SnifferAPI/*.py" = ["E402", "E721", "E722", "F403", "F405", "F811", "UP031"]
+"tools/bluetooth/nrf_sniffer_ble.py" = ["E402", "UP031"]
+"tools/bluetooth/extcap/nrf_sniffer_ble.py" = ["E402", "UP031"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_ignores = true
+ignore_missing_imports = true
+check_untyped_defs = true
+disallow_untyped_defs = false  # Enable gradually
+show_error_codes = true

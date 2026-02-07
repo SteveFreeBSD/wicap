@@ -207,6 +207,40 @@ body {
     padding: 0.5rem;
 }
 
+/* Collapse nav earlier on laptop widths to prevent horizontal overflow. */
+@media (max-width: 1360px) {
+    .navbar {
+        padding: 0 1rem;
+    }
+
+    .nav-toggle {
+        display: block;
+    }
+
+    .nav-links {
+        display: none;
+        position: absolute;
+        top: 60px;
+        left: 0;
+        right: 0;
+        background: var(--bg-secondary);
+        flex-direction: column;
+        padding: 1rem;
+        border-bottom: 1px solid var(--border-color);
+        box-shadow: var(--shadow);
+    }
+
+    .nav-links.active {
+        display: flex;
+    }
+
+    .nav-links a {
+        display: block;
+        padding: 0.75rem 1rem;
+    }
+
+}
+
 @media (max-width: 768px) {
     .navbar {
         padding: 0 1rem;

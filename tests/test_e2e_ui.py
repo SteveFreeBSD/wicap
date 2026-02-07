@@ -270,7 +270,13 @@ class TestNavigation:
         ]
 
         for text, expected_path in nav_items:
-            page.click(f"nav >> text={text}")
+            link = page.locator("nav a", has_text=text).first
+            if not link.is_visible():
+                nav_toggle = page.locator(".nav-toggle")
+                if nav_toggle.is_visible():
+                    nav_toggle.click()
+                    page.wait_for_timeout(150)
+            link.click()
             page.wait_for_url(f"**{expected_path}", timeout=15000)
 
             # Verify active class is set
@@ -335,6 +341,14 @@ class TestRealTimeData:
         """Glass cockpit stats should update with simulated packets."""
         page.goto(BASE_URL)
         page.wait_for_selector("#global-packets")
+
+        # This test validates rendering math for the cockpit counters. Disable
+        # live packet listener so background traffic does not race the asserts.
+        page.evaluate("""() => {
+            if (window.socket && typeof window.socket.off === 'function') {
+                window.socket.off('new_packet');
+            }
+        }""")
 
         # Simulate packet events
         page.evaluate("""() => {

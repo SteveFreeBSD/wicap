@@ -6,6 +6,7 @@ Comprehensive tests for the Scavenger offline forensic intelligence engine.
 Tests are organized by milestone.
 """
 
+import os
 import sys
 import tempfile
 import unittest
@@ -25,6 +26,70 @@ try:
     PERSISTENCE_AVAILABLE = True
 except ImportError:
     PERSISTENCE_AVAILABLE = False
+
+
+def _load_sql_env_from_repo_dotenv() -> None:
+    """Load SQL credentials from repo-local .env when present.
+
+    Some tests mutate SQL env vars; this keeps SQL integration tests stable by
+    restoring the canonical local settings before connectivity checks.
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+    env_path = repo_root / ".env"
+    if not env_path.exists():
+        return
+
+    sql_keys = {
+        "WICAP_SQL_HOST",
+        "WICAP_SQL_SERVER",
+        "WICAP_SQL_DATABASE",
+        "WICAP_SQL_USER",
+        "WICAP_SQL_USERNAME",
+        "WICAP_SQL_PASSWORD",
+        "WICAP_SQL_DRIVER",
+    }
+
+    parsed: dict[str, str] = {}
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if key not in sql_keys:
+            continue
+        value = value.strip().strip('"').strip("'")
+        if value:
+            parsed[key] = value
+
+    # Force canonical SQL settings for this integration test class so previous
+    # tests cannot leak incompatible env overrides.
+    if parsed.get("WICAP_SQL_HOST"):
+        os.environ["WICAP_SQL_HOST"] = parsed["WICAP_SQL_HOST"]
+    if parsed.get("WICAP_SQL_SERVER"):
+        os.environ["WICAP_SQL_SERVER"] = parsed["WICAP_SQL_SERVER"]
+    elif parsed.get("WICAP_SQL_HOST"):
+        os.environ["WICAP_SQL_SERVER"] = parsed["WICAP_SQL_HOST"]
+
+    os.environ["WICAP_SQL_DATABASE"] = (
+        parsed.get("WICAP_SQL_DATABASE")
+        or os.environ.get("WICAP_SQL_DATABASE")
+        or "WifiInsanityDB"
+    )
+    os.environ["WICAP_SQL_USER"] = (
+        parsed.get("WICAP_SQL_USER")
+        or parsed.get("WICAP_SQL_USERNAME")
+        or "steve_linux"
+    )
+    if parsed.get("WICAP_SQL_USERNAME"):
+        os.environ["WICAP_SQL_USERNAME"] = parsed["WICAP_SQL_USERNAME"]
+    else:
+        os.environ["WICAP_SQL_USERNAME"] = os.environ["WICAP_SQL_USER"]
+
+    if parsed.get("WICAP_SQL_PASSWORD"):
+        os.environ["WICAP_SQL_PASSWORD"] = parsed["WICAP_SQL_PASSWORD"]
+    if parsed.get("WICAP_SQL_DRIVER"):
+        os.environ["WICAP_SQL_DRIVER"] = parsed["WICAP_SQL_DRIVER"]
 
 
 class TestLRUDeduplicator(unittest.TestCase):
@@ -1115,6 +1180,7 @@ class TestScavengerPersistence(unittest.TestCase):
     def setUpClass(cls):
         if not PERSISTENCE_AVAILABLE:
             raise unittest.SkipTest("Persistence modules not available")
+        _load_sql_env_from_repo_dotenv()
         cls.config = get_nexus_config()
         # Verify DB connection possible before running tests
         import pyodbc

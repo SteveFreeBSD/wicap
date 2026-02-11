@@ -1,0 +1,52 @@
+{
+  "name": "wicap-default-runtime",
+  "version": "1.0.1",
+  "schema": "runtime-contract.v1",
+  "services": [
+    {
+      "name": "wicap-ui",
+      "required_state": "up",
+      "critical": true
+    },
+    {
+      "name": "wicap-processor",
+      "required_state": "up",
+      "critical": true
+    },
+    {
+      "name": "wicap-scout",
+      "required_state": "up",
+      "critical": true
+    },
+    {
+      "name": "wicap-redis",
+      "required_state": "up",
+      "critical": true
+    }
+  ],
+  "ports": [
+    {
+      "port": 8080,
+      "required": true
+    },
+    {
+      "port": 6380,
+      "required": true
+    }
+  ],
+  "http_endpoints": [
+    {
+      "name": "ui-health",
+      "url": "http://127.0.0.1:8080/health",
+      "required": true,
+      "ok_status": [
+        200,
+        204
+      ]
+    }
+  ],
+  "soak_gate": {
+    "policy": "all-critical-services-up",
+    "max_failures": 0
+  }
+}

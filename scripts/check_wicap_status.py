@@ -15,6 +15,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 try:
     import pyodbc
 except ImportError:  # pragma: no cover - optional dependency
@@ -94,6 +98,111 @@ def _print_section(title: str) -> None:
 
 def _print_kv(key: str, value: str) -> None:
     print(f"{key:>24}: {value}")
+
+
+def _local_status_json(cfg) -> dict[str, Any]:
+    captures_dir = cfg.captures_dir
+    pidfile = cfg.pidfile
+    pid_file = PidFile(pidfile)
+    files = {
+        "events.log": cfg.events_log,
+        "event_queue.jsonl": captures_dir / "event_queue.jsonl",
+        "curated_events.jsonl": captures_dir / "curated_events.jsonl",
+        "summary_stats.jsonl": captures_dir / "summary_stats.jsonl",
+        "processor.state.json": captures_dir / "processor.state.json",
+        "dedup_cache.json": captures_dir / "dedup_cache.json",
+    }
+
+    file_payload: dict[str, dict[str, Any]] = {}
+    for label, path in files.items():
+        if not path.exists():
+            file_payload[label] = {"exists": False}
+            continue
+        stat = path.stat()
+        file_payload[label] = {
+            "exists": True,
+            "size_bytes": int(stat.st_size),
+            "mtime_epoch": float(stat.st_mtime),
+            "mtime_iso": _fmt_ts(stat.st_mtime),
+            "age_seconds": max(0.0, time.time() - stat.st_mtime),
+        }
+
+    queue_path = captures_dir / "event_queue.jsonl"
+    state, state_err = _load_json(captures_dir / "processor.state.json")
+    dedup, dedup_err = _load_json(captures_dir / "dedup_cache.json")
+    last_event, last_event_err = _last_json(cfg.events_log)
+    last_queue, last_queue_err = _last_json(queue_path)
+    last_curated, last_curated_err = _last_json(captures_dir / "curated_events.jsonl")
+    last_summary, last_summary_err = _last_json(captures_dir / "summary_stats.jsonl")
+
+    backlog = None
+    if state and queue_path.exists():
+        try:
+            backlog = max(0, queue_path.stat().st_size - int(state.get("byte_offset", 0)))
+        except Exception:
+            backlog = None
+
+    return {
+        "captures_dir": str(captures_dir),
+        "pidfile": str(pidfile),
+        "pid": pid_file.get_pid(),
+        "running": bool(pid_file.is_running()),
+        "files": file_payload,
+        "state": state,
+        "state_error": state_err,
+        "queue_backlog_bytes": backlog,
+        "dedup_entries": len(dedup) if isinstance(dedup, dict) else None,
+        "dedup_error": dedup_err,
+        "last_event": last_event,
+        "last_event_error": last_event_err,
+        "last_queue": last_queue,
+        "last_queue_error": last_queue_err,
+        "last_curated": last_curated,
+        "last_curated_error": last_curated_err,
+        "last_summary": last_summary,
+        "last_summary_error": last_summary_err,
+    }
+
+
+def _sql_status_json() -> dict[str, Any]:
+    if pyodbc is None:
+        return {
+            "available": False,
+            "connection_ok": False,
+            "error": "pyodbc not installed",
+            "queries": {},
+        }
+
+    config = NexusConfig.from_env()
+    conn_str = config.get_sql_connection_string()
+    payload: dict[str, Any] = {
+        "available": True,
+        "connection_ok": False,
+        "error": None,
+        "queries": {},
+    }
+    try:
+        conn = pyodbc.connect(conn_str, timeout=5)
+        cursor = conn.cursor()
+        payload["connection_ok"] = True
+    except Exception as exc:
+        payload["error"] = str(exc)
+        return payload
+
+    query_map = {
+        "curated_events_count": "SELECT COUNT(*) AS total FROM curated_events",
+        "summary_stats_count": "SELECT COUNT(*) AS total FROM summary_stats",
+    }
+    for name, query in query_map.items():
+        try:
+            cursor.execute(query)
+            row = cursor.fetchone()
+            payload["queries"][name] = row[0] if row is not None else None
+        except Exception as exc:
+            payload["queries"][name] = f"error: {exc}"
+
+    conn.close()
+    return payload
 
 
 def _local_status(cfg) -> None:
@@ -246,12 +355,26 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="WiFiWizard status checks")
     parser.add_argument("--local-only", action="store_true", help="Skip SQL checks")
     parser.add_argument("--sql-only", action="store_true", help="Skip local checks")
+    parser.add_argument("--json", action="store_true", dest="as_json", help="Emit machine-readable JSON output")
     parser.add_argument("--captures-dir", help="Override captures directory")
     args = parser.parse_args()
 
     cfg = get_scout_config()
     if args.captures_dir:
         cfg.captures_dir = Path(args.captures_dir)
+
+    if args.as_json:
+        payload: dict[str, Any] = {
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "local": None,
+            "sql": None,
+        }
+        if not args.sql_only:
+            payload["local"] = _local_status_json(cfg)
+        if not args.local_only:
+            payload["sql"] = _sql_status_json()
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
 
     if not args.sql_only:
         _local_status(cfg)

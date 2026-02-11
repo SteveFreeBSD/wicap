@@ -16,4 +16,11 @@ python3 scripts/check_dead_markers.py
 echo "[review-gate] Checking repository hygiene"
 python3 scripts/check_repo_hygiene.py
 
+if command -v wicap-assist >/dev/null 2>&1; then
+  echo "[review-gate] Validating runtime contract"
+  wicap-assist contract-check --enforce
+else
+  echo "[review-gate] Skipping runtime contract check (wicap-assist not installed)"
+fi
+
 echo "[review-gate] PASS"

@@ -118,7 +118,7 @@ S6.3 Suricata/Zeek-Compatible Event Semantics
 - [x] Standardize flow correlation keys (`community_id`) and evidence pointers.
 
 S6.4 Anomaly Intelligence Feed
-- [ ] Publish windowed anomaly features and scored anomaly events for assistant correlation.
+- [x] Publish windowed anomaly features and scored anomaly events (`wicap.anomaly.v1`) for assistant correlation.
 - [ ] Capture operator feedback labels for bounded recalibration loops.
 
 S6.5 Provider-Neutral OTLP Telemetry

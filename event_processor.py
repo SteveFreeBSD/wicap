@@ -53,6 +53,7 @@ except ImportError:
 try:
     from src.wicap.core.processing.deduplicator import DedupCache
     from src.wicap.core.processing.persistence import PersistenceManager
+    from src.wicap.telemetry.anomaly_events import append_anomaly_events
     from src.wicap.telemetry.network_events import normalize_wicap_event
 except ImportError:
     # Fallback: ensure repo root is on sys.path so `src` namespace is importable.
@@ -61,6 +62,10 @@ except ImportError:
         sys.path.insert(0, str(repo_root))
     from src.wicap.core.processing.deduplicator import DedupCache
     from src.wicap.core.processing.persistence import PersistenceManager
+    try:
+        from src.wicap.telemetry.anomaly_events import append_anomaly_events
+    except ImportError:
+        append_anomaly_events = None
     try:
         from src.wicap.telemetry.network_events import normalize_wicap_event
     except ImportError:
@@ -254,10 +259,12 @@ class EventProcessor:
         self.state_path = config.captures_dir / "processor.state.json"
         self.curated_path = config.captures_dir / "curated_events.jsonl"
         self.network_events_path = config.captures_dir / "wicap_network_events.jsonl"
+        self.anomaly_events_path = config.captures_dir / "wicap_anomaly_events.jsonl"
         self.dedup_cache_path = config.captures_dir / "dedup_cache.json"
         self.summary_stats_path = config.captures_dir / "summary_stats.jsonl"
         self.sensor_id = os.getenv("WICAP_SENSOR_ID", "wicap-local").strip() or "wicap-local"
         self._network_export_warned = False
+        self._anomaly_export_warned = False
 
         # State
         self.state = self._load_state()
@@ -1356,6 +1363,18 @@ class EventProcessor:
             try:
                 scores = self.stream_scorer.score_recent_windows(time.time())
                 if scores:
+                    if append_anomaly_events is not None:
+                        try:
+                            append_anomaly_events(
+                                output_path=self.anomaly_events_path,
+                                scores=scores,
+                                sensor_id=self.sensor_id,
+                                anomalies_only=True,
+                            )
+                        except Exception as exc:
+                            if not self._anomaly_export_warned:
+                                logger.warning(f"Anomaly event export disabled after error: {exc}")
+                                self._anomaly_export_warned = True
                     self.stream_scorer.persist_anomalies(scores)
             except Exception as exc:
                 if not self._stream_scorer_warned:

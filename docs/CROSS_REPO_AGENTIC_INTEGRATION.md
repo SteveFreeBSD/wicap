@@ -1,6 +1,6 @@
 # WiCAP x WICAP Assistant Cross-Repo Agentic Integration
 
-Status: In Progress (W0-W2 foundations implemented; W4.1 OTLP baseline implemented)
+Status: In Progress (W0-W2 foundations implemented; W3.2 anomaly output baseline implemented; W4.1 OTLP baseline implemented)
 Owner: WiCAP Core (with wicap-assistant integration partners)
 Companion plan: `/home/steve/apps/wicap-assistant/docs/CROSS_REPO_INTELLIGENCE_WORKSLICES.md`
 
@@ -18,9 +18,12 @@ Companion plan: `/home/steve/apps/wicap-assistant/docs/CROSS_REPO_INTELLIGENCE_W
   - `src/wicap/telemetry/network_events.py` for `wicap.event.v1` normalization.
   - Zeek conn-compatible and Suricata EVE-compatible exporters + script wrapper.
   - Runtime emission hook in `event_processor.py` to append normalized network events.
+- Implemented W3.2 anomaly output baseline:
+  - `ops/contracts/wicap.anomaly.v1.json` + fixture parity tests.
+  - `src/wicap/telemetry/anomaly_events.py` with runtime append hook from stream scorer output.
 - Implemented W4.1 OTLP collector baseline:
   - compose `otel` profile and `ops/otel/collector-config.yaml` with OTLP receiver and required processors.
-- Remaining: W3 anomaly streaming contracts, W4.2/W4.3 redaction delivery hardening, W5 rollout gates.
+- Remaining: W3.3 operator feedback capture, W4.2/W4.3 redaction delivery hardening, W5 rollout gates.
 
 ## 1. Program Objective
 Evolve WiCAP into the runtime intelligence substrate for a new class of network-aware agentic assistants:
@@ -141,7 +144,7 @@ OTLP-aligned output for:
 - Exit criteria:
   - feature windows persisted and queryable.
 
-### Work Slice W3.2 - Streaming Anomaly Output Contract
+### Work Slice W3.2 - Streaming Anomaly Output Contract (Implemented Baseline)
 - Goal: emit anomaly events with score, confidence, and contributing features.
 - Files:
   - anomaly modules + serialization/export path.

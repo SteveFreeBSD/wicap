@@ -85,8 +85,43 @@ def test_wicap_control_contract_shape_and_allowlist_fields() -> None:
     assert max_verification_steps > 0
 
 
+def test_wicap_anomaly_contract_shape_and_feature_window_fields() -> None:
+    contract = _read_json(_CONTRACT_DIR / "wicap.anomaly.v1.json")
+
+    assert contract.get("schema") == "wicap.anomaly.v1"
+    assert contract.get("anomaly_contract_version") == "wicap.anomaly.v1"
+
+    required = contract.get("required_top_level_fields")
+    assert isinstance(required, list)
+    required_set = {str(item) for item in required}
+    for key in {
+        "anomaly_contract_version",
+        "ts",
+        "category",
+        "signature",
+        "sensor_id",
+        "scope",
+        "score",
+        "confidence",
+        "severity",
+        "feature_window",
+        "feature_vector",
+    }:
+        assert key in required_set
+
+    feature_window_fields = contract.get("required_feature_window_fields")
+    assert isinstance(feature_window_fields, list)
+    assert {str(item) for item in feature_window_fields} >= {"window_start", "window_end", "event_count"}
+
+    score_bounds = contract.get("score_bounds")
+    assert isinstance(score_bounds, dict)
+    assert score_bounds.get("score") == [0, 100]
+    assert score_bounds.get("confidence") == [0, 100]
+    assert score_bounds.get("severity") == [1, 5]
+
+
 def test_contract_fixtures_match_contract_files() -> None:
-    for name in ("wicap.event.v1.json", "wicap.control.v1.json"):
+    for name in ("wicap.event.v1.json", "wicap.control.v1.json", "wicap.anomaly.v1.json"):
         contract = _read_json(_CONTRACT_DIR / name)
         fixture = _read_json(_FIXTURE_DIR / name)
         assert fixture == contract

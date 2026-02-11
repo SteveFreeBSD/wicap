@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-from collections import deque
-from dataclasses import dataclass
-from datetime import datetime, timezone
 import json
 import os
 import re
 import time
-from typing import Any, Callable, Mapping, Sequence
+from collections import deque
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any
 from urllib.parse import urlparse
 
 _REDACTED = "[REDACTED]"

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 
 def test_export_wicap_network_events_script_generates_outputs(tmp_path: Path) -> None:

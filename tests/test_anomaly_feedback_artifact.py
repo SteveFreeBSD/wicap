@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WICAP_UI_ROOT = REPO_ROOT / "wicap-ui"
 if str(WICAP_UI_ROOT) not in sys.path:
     sys.path.insert(0, str(WICAP_UI_ROOT))
 
-from app.services.anomaly_feedback import FEEDBACK_CONTRACT_VERSION, append_anomaly_feedback_event
+from app.services.anomaly_feedback import FEEDBACK_CONTRACT_VERSION, append_anomaly_feedback_event  # noqa: E402
 
 
 def test_append_anomaly_feedback_event_writes_contract_jsonl(tmp_path: Path, monkeypatch) -> None:
@@ -37,4 +37,3 @@ def test_append_anomaly_feedback_event_writes_contract_jsonl(tmp_path: Path, mon
     assert payload["attack_type"] == "anomaly_stream"
     assert payload["bssid"] == "aa:bb:cc:dd:ee:ff"
     assert payload["source"] == "api_alert_feedback"
-

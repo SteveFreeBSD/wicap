@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 
 def _write_runtime_files(captures_dir: Path, *, curated_event: dict[str, object]) -> None:

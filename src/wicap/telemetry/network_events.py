@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import hashlib
 import json
-from pathlib import Path
 import re
-from typing import Any, Mapping
+from collections.abc import Mapping
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
 
 EVENT_CONTRACT_VERSION = "wicap.event.v1"
 _ALLOWED_SEVERITIES = {"info", "low", "medium", "high", "critical"}

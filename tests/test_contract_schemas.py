@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-
 _CONTRACT_DIR = Path(__file__).resolve().parents[1] / "ops" / "contracts"
 _FIXTURE_DIR = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "contracts"
 

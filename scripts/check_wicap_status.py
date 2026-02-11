@@ -33,9 +33,9 @@ except Exception:  # pragma: no cover - optional dependency
     evaluate_control_intent = None
     load_control_contract = None
 
-from config import get_scout_config
-from nexus.config import NexusConfig
-from scout import PidFile
+from config import get_scout_config  # noqa: E402
+from nexus.config import NexusConfig  # noqa: E402
+from scout import PidFile  # noqa: E402
 
 
 def _fmt_ts(ts: float) -> str:

@@ -15,10 +15,11 @@ import os
 import sys
 import time
 from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 from config import REDIS_QUEUE_KEY, ScoutConfig, get_scout_config, get_sql_config
 from nexus.config import get_nexus_config

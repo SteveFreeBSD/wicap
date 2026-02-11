@@ -120,8 +120,32 @@ def test_wicap_anomaly_contract_shape_and_feature_window_fields() -> None:
     assert score_bounds.get("severity") == [1, 5]
 
 
+def test_wicap_feedback_contract_shape_and_allowed_labels() -> None:
+    contract = _read_json(_CONTRACT_DIR / "wicap.feedback.v1.json")
+
+    assert contract.get("schema") == "wicap.feedback.v1"
+    assert contract.get("feedback_contract_version") == "wicap.feedback.v1"
+
+    required = contract.get("required_top_level_fields")
+    assert isinstance(required, list)
+    required_set = {str(item) for item in required}
+    for key in {"feedback_contract_version", "ts", "source", "alert_id", "label"}:
+        assert key in required_set
+
+    allowed_labels = contract.get("allowed_labels")
+    assert isinstance(allowed_labels, list)
+    assert {str(item) for item in allowed_labels} == {"confirmed", "benign", "noisy"}
+
+    assert int(contract.get("note_max_len", 0)) >= 256
+
+
 def test_contract_fixtures_match_contract_files() -> None:
-    for name in ("wicap.event.v1.json", "wicap.control.v1.json", "wicap.anomaly.v1.json"):
+    for name in (
+        "wicap.event.v1.json",
+        "wicap.control.v1.json",
+        "wicap.anomaly.v1.json",
+        "wicap.feedback.v1.json",
+    ):
         contract = _read_json(_CONTRACT_DIR / name)
         fixture = _read_json(_FIXTURE_DIR / name)
         assert fixture == contract

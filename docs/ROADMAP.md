@@ -119,7 +119,7 @@ S6.3 Suricata/Zeek-Compatible Event Semantics
 
 S6.4 Anomaly Intelligence Feed
 - [x] Publish windowed anomaly features and scored anomaly events (`wicap.anomaly.v1`) for assistant correlation.
-- [ ] Capture operator feedback labels for bounded recalibration loops.
+- [x] Capture operator feedback labels into exportable artifact stream (`wicap.feedback.v1`) for bounded recalibration loops.
 
 S6.5 Provider-Neutral OTLP Telemetry
 - [x] Add optional collector profile + redaction policy baseline tests.

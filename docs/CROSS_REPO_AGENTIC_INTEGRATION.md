@@ -1,6 +1,6 @@
 # WiCAP x WICAP Assistant Cross-Repo Agentic Integration
 
-Status: In Progress (W0-W2 foundations implemented; W3.2 anomaly output baseline implemented; W4.1 OTLP baseline implemented)
+Status: In Progress (W0-W2 foundations implemented; W3.2/W3.3 anomaly+feedback baselines implemented; W4.1 OTLP baseline implemented)
 Owner: WiCAP Core (with wicap-assistant integration partners)
 Companion plan: `/home/steve/apps/wicap-assistant/docs/CROSS_REPO_INTELLIGENCE_WORKSLICES.md`
 
@@ -21,9 +21,12 @@ Companion plan: `/home/steve/apps/wicap-assistant/docs/CROSS_REPO_INTELLIGENCE_W
 - Implemented W3.2 anomaly output baseline:
   - `ops/contracts/wicap.anomaly.v1.json` + fixture parity tests.
   - `src/wicap/telemetry/anomaly_events.py` with runtime append hook from stream scorer output.
+- Implemented W3.3 feedback capture baseline:
+  - `ops/contracts/wicap.feedback.v1.json` + fixture parity tests.
+  - Feedback route now appends `wicap.feedback.v1` events to `captures/wicap_anomaly_feedback.jsonl`.
 - Implemented W4.1 OTLP collector baseline:
   - compose `otel` profile and `ops/otel/collector-config.yaml` with OTLP receiver and required processors.
-- Remaining: W3.3 operator feedback capture, W4.2/W4.3 redaction delivery hardening, W5 rollout gates.
+- Remaining: W4.2/W4.3 redaction delivery hardening, W5 rollout gates.
 
 ## 1. Program Objective
 Evolve WiCAP into the runtime intelligence substrate for a new class of network-aware agentic assistants:
@@ -153,7 +156,7 @@ OTLP-aligned output for:
 - Exit criteria:
   - assistant can consume anomaly events without bespoke parsing logic.
 
-### Work Slice W3.3 - Operator Feedback Capture for False Positive Control
+### Work Slice W3.3 - Operator Feedback Capture for False Positive Control (Implemented Baseline)
 - Goal: capture feedback labels to support bounded recalibration.
 - Files:
   - API/DB modules for feedback capture.

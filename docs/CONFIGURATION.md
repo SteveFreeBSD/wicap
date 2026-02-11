@@ -47,6 +47,22 @@ Redis (if enabled):
 Core → UI:
 - `WICAP_UI_URL` (default `http://localhost:8080`)
 
+OTLP export (provider-neutral telemetry):
+- `WICAP_OTLP_PROFILE` (default `disabled`; options: `disabled`, `self_hosted`, `vendor`, `cloud`)
+- `WICAP_OTLP_HTTP_ENDPOINT` (OTLP HTTP endpoint, typically collector `/v1/logs`)
+- `WICAP_OTLP_HEADERS` (optional headers as `k=v,k2=v2` or JSON object)
+- `WICAP_OTLP_AUTH_BEARER` (optional bearer token for auth profiles)
+- `WICAP_OTLP_API_KEY` (optional `x-api-key` auth material)
+- `WICAP_OTLP_TIMEOUT_SECONDS` (default `1.5`)
+- `WICAP_OTLP_MAX_QUEUE` (default `2000`)
+- `WICAP_OTLP_MAX_BATCH` (default `200`)
+- `WICAP_OTLP_RETRY_BACKOFF_SECONDS` (default `1.0`)
+- `WICAP_OTLP_MAX_BACKOFF_SECONDS` (default `30.0`)
+
+Notes:
+- `vendor` and `cloud` profiles require auth and prefer `https` endpoints (non-localhost).
+- OTLP failures are fail-open in runtime paths; capture/control pipelines remain primary.
+
 ## SQL Server (Shared)
 
 The core and UI both talk to SQL Server.

@@ -32,6 +32,9 @@ Companion plan: `/home/steve/apps/wicap-assistant/docs/CROSS_REPO_INTELLIGENCE_W
 - Implemented W4.3 delivery resilience baseline:
   - bounded queue with retry backoff + non-blocking flush in `event_processor.py`.
   - collector failure paths remain fail-open and do not degrade batch processing.
+- Implemented OTLP endpoint/auth profile validation baseline:
+  - profile-aware config resolution (`disabled`, `self_hosted`, `vendor`, `cloud`).
+  - auth material handling for bearer/api-key header injection with validation tests.
 - Remaining: W5 rollout gates.
 
 ## 1. Program Objective

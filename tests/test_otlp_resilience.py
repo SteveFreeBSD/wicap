@@ -6,6 +6,7 @@ from src.wicap.telemetry.otlp_resilience import (
     ResilientOTLPExporter,
     build_otlp_logs_request,
     redact_payload,
+    resolve_otlp_export_config,
 )
 
 
@@ -134,3 +135,33 @@ def test_build_otlp_logs_request_shapes_resource_and_log_records() -> None:
     log_records = scope_logs[0]["logRecords"]
     assert log_records
     assert log_records[0]["severityText"] == "INFO"
+
+
+def test_resolve_otlp_export_config_vendor_requires_auth() -> None:
+    config = resolve_otlp_export_config(
+        {
+            "WICAP_OTLP_PROFILE": "vendor",
+            "WICAP_OTLP_HTTP_ENDPOINT": "https://otlp.example.com/v1/logs",
+        }
+    )
+    assert config.enabled is True
+    assert config.is_valid is False
+    assert any("require auth" in item for item in config.errors)
+
+
+def test_resolve_otlp_export_config_cloud_injects_bearer_auth() -> None:
+    config = resolve_otlp_export_config(
+        {
+            "WICAP_OTLP_PROFILE": "cloud",
+            "WICAP_OTLP_HTTP_ENDPOINT": "https://otlp.example.com/v1/logs",
+            "WICAP_OTLP_AUTH_BEARER": "token-value",
+        }
+    )
+    assert config.is_valid is True
+    assert str(config.headers.get("Authorization", "")).startswith("Bearer ")
+
+
+def test_resolve_otlp_export_config_endpoint_only_defaults_to_self_hosted() -> None:
+    config = resolve_otlp_export_config({"WICAP_OTLP_HTTP_ENDPOINT": "http://localhost:4318/v1/logs"})
+    assert config.profile == "self_hosted"
+    assert config.is_valid is True

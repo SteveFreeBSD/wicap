@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from collections import deque
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
+import os
 import re
 import time
 from typing import Any, Callable, Mapping, Sequence
+from urllib.parse import urlparse
 
 _REDACTED = "[REDACTED]"
 _SENSITIVE_KEY_RE = re.compile(
@@ -18,6 +21,37 @@ _SENSITIVE_VALUE_RE = re.compile(
     r"(?:bearer\s+[a-z0-9\-._~+/]+=*|-----BEGIN [A-Z ]+-----|x-api-key|access_token|refresh_token)",
     re.IGNORECASE,
 )
+_PROFILE_ALIASES = {
+    "": "disabled",
+    "off": "disabled",
+    "none": "disabled",
+    "disabled": "disabled",
+    "self-hosted": "self_hosted",
+    "self_hosted": "self_hosted",
+    "selfhosted": "self_hosted",
+    "vendor": "vendor",
+    "cloud": "cloud",
+}
+_LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
+
+
+@dataclass(slots=True)
+class OtlpExportConfig:
+    profile: str
+    endpoint: str | None
+    headers: dict[str, str]
+    timeout_seconds: float
+    max_queue: int
+    max_batch: int
+    retry_backoff_seconds: float
+    max_backoff_seconds: float
+    enabled: bool
+    errors: list[str]
+    warnings: list[str]
+
+    @property
+    def is_valid(self) -> bool:
+        return self.enabled and not self.errors and bool(self.endpoint)
 
 
 def _is_sensitive_key(key: object) -> bool:
@@ -285,23 +319,109 @@ def _parse_headers_from_env(raw: str) -> dict[str, str]:
     return out
 
 
-def build_resilient_otlp_exporter(*, session: Any = None) -> ResilientOTLPExporter:
-    import os
+def _normalize_profile(value: str) -> str:
+    normalized = str(value or "").strip().lower()
+    return _PROFILE_ALIASES.get(normalized, normalized)
 
-    endpoint = os.getenv("WICAP_OTLP_HTTP_ENDPOINT", "").strip()
-    headers = _parse_headers_from_env(os.getenv("WICAP_OTLP_HEADERS", ""))
-    timeout_seconds = float(os.getenv("WICAP_OTLP_TIMEOUT_SECONDS", "1.5"))
-    max_queue = int(os.getenv("WICAP_OTLP_MAX_QUEUE", "2000"))
-    max_batch = int(os.getenv("WICAP_OTLP_MAX_BATCH", "200"))
-    retry_backoff_seconds = float(os.getenv("WICAP_OTLP_RETRY_BACKOFF_SECONDS", "1.0"))
-    max_backoff_seconds = float(os.getenv("WICAP_OTLP_MAX_BACKOFF_SECONDS", "30.0"))
-    return ResilientOTLPExporter(
+
+def resolve_otlp_export_config(env: Mapping[str, str] | None = None) -> OtlpExportConfig:
+    mapping = dict(env or os.environ)
+    profile = _normalize_profile(str(mapping.get("WICAP_OTLP_PROFILE", "")))
+    endpoint = str(mapping.get("WICAP_OTLP_HTTP_ENDPOINT", "")).strip() or None
+    headers = _parse_headers_from_env(str(mapping.get("WICAP_OTLP_HEADERS", "")))
+
+    warnings: list[str] = []
+    errors: list[str] = []
+
+    if profile == "disabled" and endpoint:
+        profile = "self_hosted"
+
+    timeout_seconds = 1.5
+    try:
+        timeout_seconds = max(0.1, float(mapping.get("WICAP_OTLP_TIMEOUT_SECONDS", "1.5")))
+    except (TypeError, ValueError):
+        warnings.append("invalid timeout, defaulted to 1.5s")
+
+    max_queue = 2000
+    max_batch = 200
+    retry_backoff_seconds = 1.0
+    max_backoff_seconds = 30.0
+    try:
+        max_queue = max(1, int(mapping.get("WICAP_OTLP_MAX_QUEUE", "2000")))
+    except (TypeError, ValueError):
+        warnings.append("invalid max queue, defaulted to 2000")
+    try:
+        max_batch = max(1, int(mapping.get("WICAP_OTLP_MAX_BATCH", "200")))
+    except (TypeError, ValueError):
+        warnings.append("invalid max batch, defaulted to 200")
+    try:
+        retry_backoff_seconds = max(0.1, float(mapping.get("WICAP_OTLP_RETRY_BACKOFF_SECONDS", "1.0")))
+    except (TypeError, ValueError):
+        warnings.append("invalid retry backoff, defaulted to 1.0s")
+    try:
+        max_backoff_seconds = max(
+            retry_backoff_seconds,
+            float(mapping.get("WICAP_OTLP_MAX_BACKOFF_SECONDS", "30.0")),
+        )
+    except (TypeError, ValueError):
+        warnings.append("invalid max backoff, defaulted to 30.0s")
+
+    bearer = str(mapping.get("WICAP_OTLP_AUTH_BEARER", "")).strip()
+    api_key = str(mapping.get("WICAP_OTLP_API_KEY", "")).strip()
+    header_keys = {str(key).strip().lower() for key in headers.keys()}
+    if bearer and "authorization" not in header_keys:
+        headers["Authorization"] = f"Bearer {bearer}"
+    if api_key and "x-api-key" not in header_keys:
+        headers["x-api-key"] = api_key
+
+    if profile not in {"disabled", "self_hosted", "vendor", "cloud"}:
+        errors.append(f"unknown profile '{profile}'")
+
+    enabled = profile != "disabled"
+    if enabled and not endpoint:
+        errors.append("endpoint is required for enabled OTLP profile")
+
+    parsed = urlparse(endpoint) if endpoint else None
+    if endpoint and parsed is not None:
+        scheme = str(parsed.scheme or "").lower()
+        if scheme not in {"http", "https"}:
+            errors.append("endpoint must use http or https")
+        host = str(parsed.hostname or "").strip().lower()
+        if profile in {"vendor", "cloud"} and scheme != "https" and host not in _LOCAL_HOSTS:
+            errors.append("vendor/cloud profiles require https endpoint (except localhost)")
+
+    has_auth = any(key in {"authorization", "x-api-key"} for key in header_keys) or bool(
+        headers.get("Authorization") or headers.get("x-api-key")
+    )
+    if profile in {"vendor", "cloud"} and not has_auth:
+        errors.append("vendor/cloud profiles require auth via bearer token, api key, or headers")
+    if profile == "self_hosted" and not has_auth:
+        warnings.append("self_hosted profile configured without auth headers")
+
+    return OtlpExportConfig(
+        profile=profile,
         endpoint=endpoint,
         headers=headers,
-        timeout_seconds=timeout_seconds,
-        max_queue=max_queue,
-        max_batch=max_batch,
-        retry_backoff_seconds=retry_backoff_seconds,
-        max_backoff_seconds=max_backoff_seconds,
+        timeout_seconds=float(timeout_seconds),
+        max_queue=int(max_queue),
+        max_batch=int(max_batch),
+        retry_backoff_seconds=float(retry_backoff_seconds),
+        max_backoff_seconds=float(max_backoff_seconds),
+        enabled=bool(enabled),
+        errors=errors,
+        warnings=warnings,
+    )
+
+
+def build_resilient_otlp_exporter(*, session: Any = None) -> ResilientOTLPExporter:
+    config = resolve_otlp_export_config()
+    return ResilientOTLPExporter(
+        endpoint=config.endpoint if config.is_valid else None,
+        headers=config.headers,
+        timeout_seconds=float(config.timeout_seconds),
+        max_queue=int(config.max_queue),
+        max_batch=int(config.max_batch),
+        retry_backoff_seconds=float(config.retry_backoff_seconds),
+        max_backoff_seconds=float(config.max_backoff_seconds),
         session=session,
     )

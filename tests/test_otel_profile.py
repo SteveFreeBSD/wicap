@@ -26,3 +26,17 @@ def test_otel_collector_config_has_otlp_receiver_and_required_processors() -> No
     assert "traces:" in config_text
     assert "metrics:" in config_text
     assert "logs:" in config_text
+
+
+def test_configuration_docs_include_otlp_profile_and_auth_variables() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    config_text = (repo_root / "docs" / "CONFIGURATION.md").read_text(encoding="utf-8")
+    required = [
+        "WICAP_OTLP_PROFILE",
+        "WICAP_OTLP_HTTP_ENDPOINT",
+        "WICAP_OTLP_HEADERS",
+        "WICAP_OTLP_AUTH_BEARER",
+        "WICAP_OTLP_API_KEY",
+    ]
+    for key in required:
+        assert key in config_text

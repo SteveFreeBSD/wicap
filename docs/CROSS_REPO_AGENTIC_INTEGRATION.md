@@ -1,6 +1,6 @@
 # WiCAP x WICAP Assistant Cross-Repo Agentic Integration
 
-Status: In Progress (W0 artifacts implemented: contract files + schema tests)
+Status: In Progress (W0-W2 foundations implemented; W4.1 OTLP baseline implemented)
 Owner: WiCAP Core (with wicap-assistant integration partners)
 Companion plan: `/home/steve/apps/wicap-assistant/docs/CROSS_REPO_INTELLIGENCE_WORKSLICES.md`
 
@@ -10,7 +10,17 @@ Companion plan: `/home/steve/apps/wicap-assistant/docs/CROSS_REPO_INTELLIGENCE_W
   - `ops/contracts/wicap.control.v1.json`
   - `tests/fixtures/contracts/*` exports
   - `tests/test_contract_schemas.py` validation suite
-- Remaining W0 work: enforce contract parity as mandatory CI gate shared with assistant repo.
+- Implemented W1 control intake hardening:
+  - `wicap-ui/app/services/control_intent.py` validation + policy plane evaluation.
+  - `/api/system/control-intent` endpoint with per-intent accept/reject audit records.
+  - `scripts/check_wicap_status.py` control-intent validation gate (`--validate-control-intent-json`).
+- Implemented W2 network semantics baseline:
+  - `src/wicap/telemetry/network_events.py` for `wicap.event.v1` normalization.
+  - Zeek conn-compatible and Suricata EVE-compatible exporters + script wrapper.
+  - Runtime emission hook in `event_processor.py` to append normalized network events.
+- Implemented W4.1 OTLP collector baseline:
+  - compose `otel` profile and `ops/otel/collector-config.yaml` with OTLP receiver and required processors.
+- Remaining: W3 anomaly streaming contracts, W4.2/W4.3 redaction delivery hardening, W5 rollout gates.
 
 ## 1. Program Objective
 Evolve WiCAP into the runtime intelligence substrate for a new class of network-aware agentic assistants:
@@ -51,7 +61,7 @@ OTLP-aligned output for:
 
 ## Milestone W0: Contract and Fixture Baseline
 
-### Work Slice W0.1 - Publish Contract Artifacts
+### Work Slice W0.1 - Publish Contract Artifacts (Implemented)
 - Files:
   - `ops/contracts/wicap.event.v1.json` (new)
   - `ops/contracts/wicap.control.v1.json` (new)
@@ -60,7 +70,7 @@ OTLP-aligned output for:
 - Exit criteria:
   - contract fixtures used by both repos and validated in CI.
 
-### Work Slice W0.2 - Cross-Repo Fixture Export
+### Work Slice W0.2 - Cross-Repo Fixture Export (Implemented)
 - Files:
   - `tests/fixtures/contracts/*` (new)
 - Tests:
@@ -70,7 +80,7 @@ OTLP-aligned output for:
 
 ## Milestone W1: Runtime Control Plane Hardening
 
-### Work Slice W1.1 - Intent Validation Gate
+### Work Slice W1.1 - Intent Validation Gate (Implemented)
 - Goal: reject invalid/out-of-policy control intents before any action dispatch.
 - Files:
   - control API/dispatcher modules
@@ -80,7 +90,7 @@ OTLP-aligned output for:
 - Exit criteria:
   - no non-compliant action reaches execution layer.
 
-### Work Slice W1.2 - Plane Metadata Emission
+### Work Slice W1.2 - Plane Metadata Emission (Implemented)
 - Goal: emit plane evaluation metadata for each accepted/rejected intent.
 - Files:
   - control audit modules
@@ -92,7 +102,7 @@ OTLP-aligned output for:
 
 ## Milestone W2: WiCAP-Native Network Semantics
 
-### Work Slice W2.1 - Suricata-Compatible Event Classes
+### Work Slice W2.1 - Suricata-Compatible Event Classes (Implemented Baseline)
 - Goal: map WiCAP detections to EVE-like typed categories where data exists (`alert`, `flow`, `dns`, `http`, etc.).
 - Files:
   - `event_processor.py`
@@ -102,7 +112,7 @@ OTLP-aligned output for:
 - Exit criteria:
   - compatibility matrix documented and passing tests.
 
-### Work Slice W2.2 - Zeek-Compatible Connection Summaries
+### Work Slice W2.2 - Zeek-Compatible Connection Summaries (Implemented Baseline)
 - Goal: emit conn-like summaries for connection behavior and correlation.
 - Files:
   - telemetry/export modules under `src/wicap/`
@@ -111,7 +121,7 @@ OTLP-aligned output for:
 - Exit criteria:
   - output supports direct correlation against Zeek-style conn workflows.
 
-### Work Slice W2.3 - Community ID and Evidence Pointer Standardization
+### Work Slice W2.3 - Community ID and Evidence Pointer Standardization (Implemented Baseline)
 - Goal: normalize flow correlation keys and evidence refs used by assistant memory/ranking.
 - Files:
   - parser + event serialization modules.
@@ -151,7 +161,7 @@ OTLP-aligned output for:
 
 ## Milestone W4: OTLP Observability
 
-### Work Slice W4.1 - Collector Profile in Compose
+### Work Slice W4.1 - Collector Profile in Compose (Implemented)
 - Goal: add optional OTLP collector profile for traces/metrics/logs export.
 - Files:
   - `docker-compose.yml`

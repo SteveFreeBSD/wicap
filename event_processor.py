@@ -53,6 +53,7 @@ except ImportError:
 try:
     from src.wicap.core.processing.deduplicator import DedupCache
     from src.wicap.core.processing.persistence import PersistenceManager
+    from src.wicap.telemetry.network_events import normalize_wicap_event
 except ImportError:
     # Fallback: ensure repo root is on sys.path so `src` namespace is importable.
     repo_root = Path(__file__).resolve().parent
@@ -60,6 +61,10 @@ except ImportError:
         sys.path.insert(0, str(repo_root))
     from src.wicap.core.processing.deduplicator import DedupCache
     from src.wicap.core.processing.persistence import PersistenceManager
+    try:
+        from src.wicap.telemetry.network_events import normalize_wicap_event
+    except ImportError:
+        normalize_wicap_event = None
 
 # Configure logging
 logger = logging.getLogger('wicap.processor')
@@ -248,8 +253,11 @@ class EventProcessor:
         self.queue_path = config.captures_dir / "event_queue.jsonl"
         self.state_path = config.captures_dir / "processor.state.json"
         self.curated_path = config.captures_dir / "curated_events.jsonl"
+        self.network_events_path = config.captures_dir / "wicap_network_events.jsonl"
         self.dedup_cache_path = config.captures_dir / "dedup_cache.json"
         self.summary_stats_path = config.captures_dir / "summary_stats.jsonl"
+        self.sensor_id = os.getenv("WICAP_SENSOR_ID", "wicap-local").strip() or "wicap-local"
+        self._network_export_warned = False
 
         # State
         self.state = self._load_state()
@@ -694,6 +702,20 @@ class EventProcessor:
         with open(self.curated_path, 'a') as f:
             f.write(json_compat.dumps(enriched, separators=(',', ':')) + '\n')
         self.state.events_curated += 1
+        if normalize_wicap_event is not None:
+            try:
+                normalized_event = normalize_wicap_event(
+                    enriched,
+                    sensor_id=self.sensor_id,
+                    evidence_path=str(self.curated_path),
+                    evidence_offset=int(self.state.events_curated),
+                )
+                with open(self.network_events_path, "a", encoding="utf-8") as handle:
+                    handle.write(json_compat.dumps(normalized_event, separators=(",", ":")) + "\n")
+            except Exception as exc:
+                if not self._network_export_warned:
+                    logger.warning(f"Network event export disabled after error: {exc}")
+                    self._network_export_warned = True
 
         # Track for summary stats (counters)
         self._update_summary_stats(enriched)

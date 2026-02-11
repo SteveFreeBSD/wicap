@@ -23,4 +23,7 @@ else
   echo "[review-gate] Skipping runtime contract check (wicap-assist not installed)"
 fi
 
+echo "[review-gate] Evaluating agentic rollout gate (informational)"
+python3 scripts/run_agentic_rollout_gate.py --no-require-assistant --json >/dev/null
+
 echo "[review-gate] PASS"

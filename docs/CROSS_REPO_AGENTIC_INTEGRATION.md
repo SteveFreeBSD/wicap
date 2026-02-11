@@ -1,6 +1,6 @@
 # WiCAP x WICAP Assistant Cross-Repo Agentic Integration
 
-Status: In Progress (W0-W2 foundations implemented; W3.2/W3.3 anomaly+feedback baselines implemented; W4.1-W4.3 OTLP baselines implemented)
+Status: In Progress (W0-W4 foundations implemented; W5 rollout-gate baselines implemented)
 Owner: WiCAP Core (with wicap-assistant integration partners)
 Companion plan: `/home/steve/apps/wicap-assistant/docs/CROSS_REPO_INTELLIGENCE_WORKSLICES.md`
 
@@ -35,7 +35,7 @@ Companion plan: `/home/steve/apps/wicap-assistant/docs/CROSS_REPO_INTELLIGENCE_W
 - Implemented OTLP endpoint/auth profile validation baseline:
   - profile-aware config resolution (`disabled`, `self_hosted`, `vendor`, `cloud`).
   - auth material handling for bearer/api-key header injection with validation tests.
-- Remaining: W5 rollout gates.
+- Remaining: optional production tuning of thresholds per deployment.
 
 ## 1. Program Objective
 Evolve WiCAP into the runtime intelligence substrate for a new class of network-aware agentic assistants:
@@ -208,7 +208,7 @@ OTLP-aligned output for:
 
 ## Milestone W5: Rollout and Validation
 
-### Work Slice W5.1 - Shadow Validation with Suricata/Zeek (Optional)
+### Work Slice W5.1 - Shadow Validation with Suricata/Zeek (Optional, Implemented Baseline)
 - Goal: compare WiCAP-native outputs against Suricata/Zeek in controlled replay/soak.
 - Files:
   - research/validation harness docs and scripts.
@@ -217,14 +217,14 @@ OTLP-aligned output for:
 - Exit criteria:
   - gap report available with field-level parity metrics.
 
-### Work Slice W5.2 - Canary Deployment
+### Work Slice W5.2 - Canary Deployment (Implemented Baseline)
 - Goal: enable new intelligence contracts for limited environments only.
 - Tests:
   - canary soak with escalation/recovery telemetry checks.
 - Exit criteria:
   - canary SLOs pass before wider rollout.
 
-### Work Slice W5.3 - Production Gate
+### Work Slice W5.3 - Production Gate (Implemented Baseline)
 - Goal: promote to default only after SLO compliance.
 - SLOs:
   - anomaly precision/recall proxy improvements

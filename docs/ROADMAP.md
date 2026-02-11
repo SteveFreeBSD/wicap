@@ -126,8 +126,8 @@ S6.5 Provider-Neutral OTLP Telemetry
 - [x] Ensure telemetry failures do not degrade capture/control paths.
 
 S6.6 Rollout Gates
-- [ ] Shadow validation and optional Suricata/Zeek parity runs.
-- [ ] Canary -> production promotion based on SLOs.
+- [x] Shadow validation and optional Suricata/Zeek parity runs.
+- [x] Canary -> production promotion based on SLOs.
 
 Detailed workslices and acceptance criteria: `docs/CROSS_REPO_AGENTIC_INTEGRATION.md`.
 

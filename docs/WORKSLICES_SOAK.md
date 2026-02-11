@@ -1,6 +1,6 @@
 # Live Soak Work Slices
 
-This is the execution plan that turns our current roadmap into a reliable, repeatable live soak gate. It lists every work slice that must land (with documentation and tests) before the system is ready for a professional, uninterrupted soak run. Use this file together with `docs/ROADMAP.md` and `docs/TESTING.md`.
+This is the execution plan that turns our current roadmap into a reliable, repeatable live soak gate. It lists every work slice that must land (with documentation and tests) before the system is ready for a professional, uninterrupted soak run. Use this file together with `docs/ROADMAP.md` and `docs/TESTING.md`. For cross-repo agentic integration work, use `docs/CROSS_REPO_AGENTIC_INTEGRATION.md`.
 
 ## 1. Why this matters
 

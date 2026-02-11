@@ -33,7 +33,7 @@ Start here: `docs/INDEX.md`
 
 ### Step A: Preflight
 
-- Confirm the change belongs to an existing workstream in `docs/ROADMAP.md`.
+- Confirm the change belongs to an existing workstream in `docs/ROADMAP.md` or `docs/CROSS_REPO_AGENTIC_INTEGRATION.md` for cross-repo assistant integration.
 - Identify the test(s) you will add/update before coding.
 
 ### Step B: Implement
@@ -55,7 +55,7 @@ Then run additional targeted checks when applicable:
 
 - Update `docs/ROADMAP.md` if scope/status changed.
 - Update `CHANGELOG.md` if the change is user-visible or operationally relevant.
-- Do not add new roadmaps; extend the canonical roadmap.
+- Do not add ad-hoc roadmaps; extend the canonical roadmap docs (`docs/ROADMAP.md` and, for cross-repo scope, `docs/CROSS_REPO_AGENTIC_INTEGRATION.md`).
 
 ---
 
@@ -83,5 +83,5 @@ Silent failures:
 ## 5. Documentation Governance (No Drift)
 
 - **Single source of truth**: `docs/` only.
-- **Roadmap**: only `docs/ROADMAP.md` is canonical.
+- **Roadmap**: `docs/ROADMAP.md` is canonical for WiCAP runtime; `docs/CROSS_REPO_AGENTIC_INTEGRATION.md` is canonical for cross-repo assistant integration scope.
 - **Onboarding bundles**: `onboarding/` is snapshot-only. If it conflicts with `docs/`, update `docs/` and regenerate the bundle later.

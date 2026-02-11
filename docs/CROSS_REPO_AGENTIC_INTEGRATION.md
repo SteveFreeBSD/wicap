@@ -8,6 +8,8 @@ Companion plan: `/home/steve/apps/wicap-assistant/docs/CROSS_REPO_INTELLIGENCE_W
 - Implemented W0 baseline artifacts:
   - `ops/contracts/wicap.event.v1.json`
   - `ops/contracts/wicap.control.v1.json`
+  - `ops/contracts/wicap.anomaly.v1.json`
+  - `ops/contracts/wicap.feedback.v1.json`
   - `tests/fixtures/contracts/*` exports
   - `tests/test_contract_schemas.py` validation suite
 - Implemented W1 control intake hardening:

@@ -12,6 +12,7 @@ from starlette.concurrency import run_in_threadpool
 import app.services.state as state
 from app.schemas import AlertAcknowledge, AlertFeedback, MACAddress, RecentEventsQuery
 from app.services.alert_consolidation import apply_alert_policy
+from app.services.anomaly_feedback import append_anomaly_feedback_event
 from app.services.bluetooth_behavior import build_bt_behavior_insight
 from app.services.bluetooth_insights import build_bt_device_insight
 from app.services.bluetooth_rotation import annotate_rotation_clusters
@@ -1808,16 +1809,47 @@ async def api_alert_feedback(payload: AlertFeedback):
 
         cursor.execute(
             """
+            SELECT attack_type, target_bssid
+            FROM attack_timeline
+            WHERE id = ?
+            """,
+            (attack_id,),
+        )
+        attack_row = cursor.fetchone()
+        if attack_row is None:
+            raise ValueError("attack_timeline record not found for alert_id")
+        attack_type = str(attack_row[0] or "").strip() or "anomaly_stream"
+        target_bssid = str(attack_row[1] or "").strip().lower() or None
+
+        cursor.execute(
+            """
             INSERT INTO attack_feedback (attack_id, label, note)
             VALUES (?, ?, ?)
             """,
             (attack_id, payload.label, payload.note),
         )
         conn.commit()
-        return {"status": "ok"}
+        return {
+            "status": "ok",
+            "attack_id": int(attack_id),
+            "attack_type": attack_type,
+            "bssid": target_bssid,
+        }
 
     try:
-        return await state.run_db(_query)
+        result = await state.run_db(_query)
+        try:
+            append_anomaly_feedback_event(
+                alert_id=str(payload.alert_id),
+                label=str(payload.label),
+                note=payload.note,
+                attack_id=int(result.get("attack_id")) if isinstance(result, dict) and result.get("attack_id") is not None else None,
+                attack_type=str(result.get("attack_type", "")) if isinstance(result, dict) else None,
+                bssid=str(result.get("bssid", "")) if isinstance(result, dict) else None,
+            )
+        except Exception as exc:
+            logger.warning("Failed to append anomaly feedback artifact: %s", exc)
+        return {"status": "ok"}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:

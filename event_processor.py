@@ -15,6 +15,7 @@ import os
 import sys
 import time
 from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -53,6 +54,9 @@ except ImportError:
 try:
     from src.wicap.core.processing.deduplicator import DedupCache
     from src.wicap.core.processing.persistence import PersistenceManager
+    from src.wicap.telemetry.anomaly_events import append_anomaly_events, normalize_wicap_anomaly_event
+    from src.wicap.telemetry.network_events import normalize_wicap_event
+    from src.wicap.telemetry.otlp_resilience import build_resilient_otlp_exporter
 except ImportError:
     # Fallback: ensure repo root is on sys.path so `src` namespace is importable.
     repo_root = Path(__file__).resolve().parent
@@ -60,6 +64,19 @@ except ImportError:
         sys.path.insert(0, str(repo_root))
     from src.wicap.core.processing.deduplicator import DedupCache
     from src.wicap.core.processing.persistence import PersistenceManager
+    try:
+        from src.wicap.telemetry.anomaly_events import append_anomaly_events, normalize_wicap_anomaly_event
+    except ImportError:
+        append_anomaly_events = None
+        normalize_wicap_anomaly_event = None
+    try:
+        from src.wicap.telemetry.network_events import normalize_wicap_event
+    except ImportError:
+        normalize_wicap_event = None
+    try:
+        from src.wicap.telemetry.otlp_resilience import build_resilient_otlp_exporter
+    except ImportError:
+        build_resilient_otlp_exporter = None
 
 # Configure logging
 logger = logging.getLogger('wicap.processor')
@@ -248,8 +265,13 @@ class EventProcessor:
         self.queue_path = config.captures_dir / "event_queue.jsonl"
         self.state_path = config.captures_dir / "processor.state.json"
         self.curated_path = config.captures_dir / "curated_events.jsonl"
+        self.network_events_path = config.captures_dir / "wicap_network_events.jsonl"
+        self.anomaly_events_path = config.captures_dir / "wicap_anomaly_events.jsonl"
         self.dedup_cache_path = config.captures_dir / "dedup_cache.json"
         self.summary_stats_path = config.captures_dir / "summary_stats.jsonl"
+        self.sensor_id = os.getenv("WICAP_SENSOR_ID", "wicap-local").strip() or "wicap-local"
+        self._network_export_warned = False
+        self._anomaly_export_warned = False
 
         # State
         self.state = self._load_state()
@@ -345,9 +367,12 @@ class EventProcessor:
             try:
                 self.feature_engineer = build_feature_engineer(config.redis_url)
                 if self.feature_engineer:
+                    window_list = getattr(self.feature_engineer, "window_secs", None)
                     logger.info(
-                        "Streaming features enabled (window=%ds)",
-                        self.feature_engineer.window_sec,
+                        "Streaming features enabled (windows=%s)",
+                        ",".join(str(int(value)) for value in window_list)
+                        if isinstance(window_list, tuple) and window_list
+                        else str(int(self.feature_engineer.window_sec)),
                     )
             except Exception as exc:
                 logger.warning(f"Feature engineer init failed: {exc}")
@@ -387,6 +412,16 @@ class EventProcessor:
         # Webhook session (persistent connection)
         import requests
         self._http_session = requests.Session()
+        self._otlp_warned = False
+        self._otlp_exporter = None
+        if build_resilient_otlp_exporter is not None:
+            try:
+                self._otlp_exporter = build_resilient_otlp_exporter(session=self._http_session)
+                if self._otlp_exporter and bool(getattr(self._otlp_exporter, "enabled", False)):
+                    logger.info("OTLP export enabled (fail-open + bounded queue).")
+            except Exception as exc:
+                logger.warning(f"OTLP exporter init failed (continuing fail-open): {exc}")
+                self._otlp_exporter = None
 
         # UI readiness tracking (avoids log spam during startup race)
         self._ui_ready = False
@@ -694,6 +729,21 @@ class EventProcessor:
         with open(self.curated_path, 'a') as f:
             f.write(json_compat.dumps(enriched, separators=(',', ':')) + '\n')
         self.state.events_curated += 1
+        if normalize_wicap_event is not None:
+            try:
+                normalized_event = normalize_wicap_event(
+                    enriched,
+                    sensor_id=self.sensor_id,
+                    evidence_path=str(self.curated_path),
+                    evidence_offset=int(self.state.events_curated),
+                )
+                with open(self.network_events_path, "a", encoding="utf-8") as handle:
+                    handle.write(json_compat.dumps(normalized_event, separators=(",", ":")) + "\n")
+                self._emit_otlp_event(kind="network_event", payload=normalized_event)
+            except Exception as exc:
+                if not self._network_export_warned:
+                    logger.warning(f"Network event export disabled after error: {exc}")
+                    self._network_export_warned = True
 
         # Track for summary stats (counters)
         self._update_summary_stats(enriched)
@@ -746,6 +796,32 @@ class EventProcessor:
                     "legacy SQL batch fallback is not enabled."
                 )
                 self._sql_fallback_warned = True
+
+    def _emit_otlp_event(self, *, kind: str, payload: Mapping[str, Any]) -> None:
+        exporter = self._otlp_exporter
+        if exporter is None:
+            return
+        if not bool(getattr(exporter, "enabled", False)):
+            return
+        try:
+            exporter.enqueue(payload, kind=str(kind))
+        except Exception as exc:
+            if not self._otlp_warned:
+                logger.warning(f"OTLP enqueue failed (fail-open): {exc}")
+                self._otlp_warned = True
+
+    def _flush_otlp(self, *, max_batches: int = 2) -> None:
+        exporter = self._otlp_exporter
+        if exporter is None:
+            return
+        if not bool(getattr(exporter, "enabled", False)):
+            return
+        try:
+            exporter.flush(max_batches=int(max_batches))
+        except Exception as exc:
+            if not self._otlp_warned:
+                logger.warning(f"OTLP flush failed (fail-open): {exc}")
+                self._otlp_warned = True
 
     def _push_to_ui_webhook(self, event_name: str, payload: dict) -> None:
         """
@@ -1334,6 +1410,26 @@ class EventProcessor:
             try:
                 scores = self.stream_scorer.score_recent_windows(time.time())
                 if scores:
+                    if append_anomaly_events is not None:
+                        try:
+                            append_anomaly_events(
+                                output_path=self.anomaly_events_path,
+                                scores=scores,
+                                sensor_id=self.sensor_id,
+                                anomalies_only=True,
+                            )
+                        except Exception as exc:
+                            if not self._anomaly_export_warned:
+                                logger.warning(f"Anomaly event export disabled after error: {exc}")
+                                self._anomaly_export_warned = True
+                    if normalize_wicap_anomaly_event is not None:
+                        for score in scores:
+                            try:
+                                anomaly_payload = normalize_wicap_anomaly_event(score, sensor_id=self.sensor_id)
+                            except Exception:
+                                continue
+                            if bool(anomaly_payload.get("is_anomaly")):
+                                self._emit_otlp_event(kind="anomaly_event", payload=anomaly_payload)
                     self.stream_scorer.persist_anomalies(scores)
             except Exception as exc:
                 if not self._stream_scorer_warned:
@@ -1351,6 +1447,8 @@ class EventProcessor:
                     self._last_profile_flush = now
                 except Exception as e:
                     logger.warning(f"Failed to flush profiles: {e}")
+
+        self._flush_otlp(max_batches=2)
 
         return (new_count, curated_count, suppressed_count)
 
@@ -1540,6 +1638,9 @@ class EventProcessor:
                         self.stream_scorer.persist_anomalies(scores)
                 except Exception as exc:
                     logger.warning(f"Stream anomaly final flush failed: {exc}")
+
+            # OTLP export is fail-open and should never block shutdown.
+            self._flush_otlp(max_batches=50)
 
             # Phase 2: Disconnect PersistenceManager
             if self.persistence_manager:

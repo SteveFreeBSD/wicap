@@ -99,6 +99,41 @@ S5.6 Public Review Gate
 - [x] Run full test suite, docs link check, and grep-based dead-code scan in one gate command.
 - [x] Publish a dated cleanup report in `docs/reports/` summarizing removed items and residual risks.
 
+### Milestone S6: Cross-Repo Agentic Integration [COMPLETED]
+
+Goal: make WiCAP the canonical runtime intelligence substrate for WICAP Assistant as a network-aware agentic system, with strict policy guardrails and provider-neutral OTLP observability.
+
+Work slices (sequenced, each slice ends with tests + doc updates):
+
+S6.1 Contract Baseline
+- [x] Publish/validate `wicap.event.v1` and `wicap.control.v1` contracts consumed by assistant parity tests.
+- [x] Add cross-repo fixture exports and drift gates.
+
+S6.2 Policy-Gated Control Intake
+- [x] Enforce schema/policy/allowlist checks on incoming control intents.
+- [x] Emit accept/reject audit records for every intent.
+
+S6.3 Suricata/Zeek-Compatible Event Semantics
+- [x] Export WiCAP-native events with EVE/conn-compatible fields where signal is available.
+- [x] Standardize flow correlation keys (`community_id`) and evidence pointers.
+
+S6.4 Anomaly Intelligence Feed
+- [x] Publish windowed anomaly features and scored anomaly events (`wicap.anomaly.v1`) for assistant correlation.
+- [x] Capture operator feedback labels into exportable artifact stream (`wicap.feedback.v1`) for bounded recalibration loops.
+
+S6.5 Provider-Neutral OTLP Telemetry
+- [x] Add optional collector profile + redaction policy baseline tests.
+- [x] Ensure telemetry failures do not degrade capture/control paths.
+
+S6.6 Rollout Gates
+- [x] Shadow validation and optional Suricata/Zeek parity runs.
+- [x] Canary -> production promotion based on SLOs.
+
+Post-completion note:
+- Deployment-specific threshold tuning remains an operational responsibility and is tracked in release runbooks, not as missing implementation scope.
+
+Detailed workslices and acceptance criteria: `docs/CROSS_REPO_AGENTIC_INTEGRATION.md`.
+
 ### Milestone S3: Operational Intelligence + Evidence [COMPLETED]
 
 Goal: make map/alerts/identity outputs accurate, actionable, and exportable before
@@ -341,7 +376,7 @@ See `docs/CONTRIBUTING.md` for full details and required patterns. Highlights:
 
 Rules:
 - `docs/INDEX.md` is the entrypoint.
-- `docs/ROADMAP.md` is the only main roadmap; `docs/BLUETOOTH.md` is the sole BLE roadmap.
+- `docs/ROADMAP.md` is the main WiCAP roadmap; `docs/BLUETOOTH.md` is the BLE roadmap; `docs/CROSS_REPO_AGENTIC_INTEGRATION.md` is the cross-repo integration companion roadmap.
 - Research belongs in `docs/research/`.
 - Component-specific notes can live in component folders, but must be linked from `docs/INDEX.md`.
 - No `PROMPTS/` tree; do not reintroduce it.

@@ -467,10 +467,51 @@ class StreamingFeatureEngineer:
             yield "bssid", bssid.lower()
 
 
+class MultiScaleFeatureEngineer:
+    """Fan-out wrapper that emits multiple feature-window resolutions."""
+
+    def __init__(self, primary: StreamingFeatureEngineer, sidecars: Sequence[StreamingFeatureEngineer]) -> None:
+        self.primary = primary
+        self.sidecars = list(sidecars)
+        self.window_sec = int(primary.window_sec)
+        values = {int(primary.window_sec)}
+        values.update(int(engine.window_sec) for engine in self.sidecars)
+        self.window_secs = tuple(sorted(values))
+
+    def ingest_event(self, event: dict[str, Any]) -> None:
+        self.primary.ingest_event(event)
+        for engine in self.sidecars:
+            engine.ingest_event(event)
+
+    def flush_expired(self, now_ts: float | None = None) -> None:
+        self.primary.flush_expired(now_ts=now_ts)
+        for engine in self.sidecars:
+            engine.flush_expired(now_ts=now_ts)
+
+    def flush_all(self) -> None:
+        self.primary.flush_all()
+        for engine in self.sidecars:
+            engine.flush_all()
+
+
 def _default_store_dir() -> Path:
     repo_root = Path(__file__).resolve().parents[2]
     default_path = repo_root / "captures" / "feature_windows"
     return Path(os.getenv("WICAP_FEATURE_STORE_PATH", str(default_path)))
+
+
+def _parse_window_list(primary_window_sec: int) -> tuple[int, ...]:
+    raw = os.getenv("WICAP_FEATURE_WINDOWS_SEC", "").strip()
+    values: set[int] = set()
+    if raw:
+        for token in raw.split(","):
+            parsed = _safe_int(token.strip())
+            if parsed is not None and parsed > 0:
+                values.add(int(parsed))
+    else:
+        values.update({30, 60, int(primary_window_sec)})
+    values.add(int(primary_window_sec))
+    return tuple(sorted(values))
 
 
 def build_feature_store(redis_url: str | None = None) -> FeatureStore | None:
@@ -494,20 +535,45 @@ def build_feature_store(redis_url: str | None = None) -> FeatureStore | None:
     return None
 
 
-def build_feature_engineer(redis_url: str | None = None) -> StreamingFeatureEngineer | None:
+def build_feature_engineer(
+    redis_url: str | None = None,
+) -> StreamingFeatureEngineer | MultiScaleFeatureEngineer | None:
     if not _env_bool("WICAP_FEATURE_STREAM_ENABLED", False):
         return None
     store = build_feature_store(redis_url)
     if store is None:
         return None
     window_sec = _safe_int(os.getenv("WICAP_FEATURE_WINDOW_SEC")) or DEFAULT_WINDOW_SEC
+    retention_sec = _safe_int(os.getenv("WICAP_FEATURE_RETENTION_SEC")) or DEFAULT_RETENTION_SEC
     min_events = _safe_int(os.getenv("WICAP_FEATURE_MIN_EVENTS")) or DEFAULT_MIN_EVENTS
     include_global = _env_bool("WICAP_FEATURE_GLOBAL_ENABLED", True)
     include_bssid = _env_bool("WICAP_FEATURE_BSSID_ENABLED", True)
-    return StreamingFeatureEngineer(
+    primary = StreamingFeatureEngineer(
         store=store,
         window_sec=window_sec,
         min_events=min_events,
         include_global=include_global,
         include_bssid=include_bssid,
     )
+    window_values = _parse_window_list(window_sec)
+    sidecars: list[StreamingFeatureEngineer] = []
+    for value in window_values:
+        if int(value) == int(window_sec):
+            continue
+        side_store = FileFeatureStore(
+            _default_store_dir(),
+            retention_sec=retention_sec,
+            prefix=f"feature_windows_{int(value)}s",
+        )
+        sidecars.append(
+            StreamingFeatureEngineer(
+                store=side_store,
+                window_sec=int(value),
+                min_events=min_events,
+                include_global=include_global,
+                include_bssid=include_bssid,
+            )
+        )
+    if not sidecars:
+        return primary
+    return MultiScaleFeatureEngineer(primary=primary, sidecars=sidecars)

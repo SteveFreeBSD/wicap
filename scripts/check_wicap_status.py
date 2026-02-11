@@ -18,15 +18,24 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+UI_ROOT = REPO_ROOT / "wicap-ui"
+if str(UI_ROOT) not in sys.path:
+    sys.path.insert(0, str(UI_ROOT))
 
 try:
     import pyodbc
 except ImportError:  # pragma: no cover - optional dependency
     pyodbc = None
 
-from config import get_scout_config
-from nexus.config import NexusConfig
-from scout import PidFile
+try:
+    from app.services.control_intent import evaluate_control_intent, load_control_contract
+except Exception:  # pragma: no cover - optional dependency
+    evaluate_control_intent = None
+    load_control_contract = None
+
+from config import get_scout_config  # noqa: E402
+from nexus.config import NexusConfig  # noqa: E402
+from scout import PidFile  # noqa: E402
 
 
 def _fmt_ts(ts: float) -> str:
@@ -205,6 +214,49 @@ def _sql_status_json() -> dict[str, Any]:
     return payload
 
 
+def _control_intent_validation_json(
+    intent_path: Path,
+    *,
+    contract_path: str | None = None,
+) -> dict[str, Any]:
+    output: dict[str, Any] = {
+        "intent_path": str(intent_path),
+        "accepted": False,
+        "reasons": [],
+        "plane_evaluation": None,
+        "error": None,
+    }
+
+    if evaluate_control_intent is None or load_control_contract is None:
+        output["error"] = "control intent module unavailable"
+        return output
+
+    if not intent_path.exists():
+        output["error"] = "intent file missing"
+        return output
+
+    try:
+        raw_payload = json.loads(intent_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        output["error"] = f"invalid control intent json: {exc}"
+        return output
+
+    intent = raw_payload
+    if isinstance(raw_payload, dict) and isinstance(raw_payload.get("intent"), dict):
+        intent = raw_payload.get("intent")
+
+    if not isinstance(intent, dict):
+        output["error"] = "intent payload must be a JSON object"
+        return output
+
+    contract = load_control_contract(contract_path)
+    accepted, reasons, plane = evaluate_control_intent(intent, contract=contract)
+    output["accepted"] = accepted
+    output["reasons"] = reasons
+    output["plane_evaluation"] = plane
+    return output
+
+
 def _local_status(cfg) -> None:
     captures_dir = cfg.captures_dir
     _print_section("Local Status")
@@ -357,6 +409,19 @@ def main() -> int:
     parser.add_argument("--sql-only", action="store_true", help="Skip local checks")
     parser.add_argument("--json", action="store_true", dest="as_json", help="Emit machine-readable JSON output")
     parser.add_argument("--captures-dir", help="Override captures directory")
+    parser.add_argument(
+        "--validate-control-intent-json",
+        help="Validate a control-intent JSON payload against wicap.control.v1 policy gates",
+    )
+    parser.add_argument(
+        "--control-intent-contract",
+        help="Override control contract JSON path (default: ops/contracts/wicap.control.v1.json)",
+    )
+    parser.add_argument(
+        "--enforce-control-intent",
+        action="store_true",
+        help="Exit non-zero when control intent validation fails",
+    )
     args = parser.parse_args()
 
     cfg = get_scout_config()
@@ -368,18 +433,50 @@ def main() -> int:
             "generated_at": datetime.utcnow().isoformat() + "Z",
             "local": None,
             "sql": None,
+            "control_intent_validation": None,
         }
         if not args.sql_only:
             payload["local"] = _local_status_json(cfg)
         if not args.local_only:
             payload["sql"] = _sql_status_json()
+        validation = None
+        if args.validate_control_intent_json:
+            validation = _control_intent_validation_json(
+                Path(args.validate_control_intent_json),
+                contract_path=args.control_intent_contract,
+            )
+            payload["control_intent_validation"] = validation
         print(json.dumps(payload, indent=2, sort_keys=True))
+        if args.enforce_control_intent and validation and not validation.get("accepted", False):
+            return 2
         return 0
 
     if not args.sql_only:
         _local_status(cfg)
     if not args.local_only:
         _sql_status()
+    validation = None
+    if args.validate_control_intent_json:
+        validation = _control_intent_validation_json(
+            Path(args.validate_control_intent_json),
+            contract_path=args.control_intent_contract,
+        )
+        _print_section("Control Intent Validation")
+        _print_kv("intent_path", validation["intent_path"])
+        _print_kv("accepted", str(validation["accepted"]).lower())
+        if validation.get("error"):
+            _print_kv("error", str(validation["error"]))
+        else:
+            _print_kv("reasons", "; ".join(validation.get("reasons", [])) or "none")
+            plane = validation.get("plane_evaluation") or {}
+            _print_kv("plane.denied_by", str(plane.get("denied_by") or "none"))
+            _print_kv(
+                "plane.summary",
+                f"runtime={plane.get('runtime_plane')} tool={plane.get('tool_policy_plane')} elevated={plane.get('elevated_plane')}",
+            )
+
+    if args.enforce_control_intent and validation and not validation.get("accepted", False):
+        return 2
 
     return 0
 

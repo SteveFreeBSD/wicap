@@ -115,5 +115,19 @@ services:
     depends_on:
       - redis
 
+  # 5. OpenTelemetry Collector (optional profile)
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.111.0
+    container_name: wicap-otel-collector
+    profiles: ["otel"]
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./ops/otel/collector-config.yaml:/etc/otelcol/config.yaml:ro
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    restart: unless-stopped
+
 volumes:
   wicap_redis_data:

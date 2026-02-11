@@ -1,11 +1,15 @@
 import json
 import os
 import subprocess
+import sys
 import time
 from pathlib import Path
+from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 
+import app.services.control_intent as control_intent_service
 import app.services.docker_client as docker_client
 import app.services.scavenger as scavenger_service
 import app.services.state as state
@@ -66,6 +70,49 @@ def _read_redis_queue_depth(redis_url: str) -> int | None:
         return int(client.llen(REDIS_QUEUE_KEY))
     except Exception:
         return None
+
+
+def _dispatch_control_intent_action(action: str) -> dict[str, Any]:
+    normalized = str(action).strip()
+    if not normalized:
+        return {"executed": False, "status": "rejected", "detail": "missing recommended_action"}
+
+    if normalized == "status_check":
+        command = [
+            sys.executable,
+            str(REPO_ROOT / "scripts" / "check_wicap_status.py"),
+            "--local-only",
+            "--json",
+        ]
+    elif normalized == "compose_up":
+        command = ["docker", "compose", "up", "-d"]
+    elif normalized == "shutdown":
+        command = ["docker", "compose", "down"]
+    elif normalized.startswith("restart_service:"):
+        service = normalized.split(":", 1)[1].strip()
+        command = ["docker", "compose", "restart", service]
+    else:
+        return {"executed": False, "status": "rejected", "detail": f"unsupported action: {normalized}"}
+
+    result = subprocess.run(
+        command,
+        cwd=str(REPO_ROOT),
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    payload: dict[str, Any] = {
+        "executed": result.returncode == 0,
+        "status": "ok" if result.returncode == 0 else "failed",
+        "command": command,
+        "returncode": int(result.returncode),
+    }
+    if result.stdout.strip():
+        payload["stdout"] = result.stdout[-4000:]
+    if result.stderr.strip():
+        payload["stderr"] = result.stderr[-4000:]
+    return payload
 
 
 @router.get("/api/system/status")
@@ -253,6 +300,44 @@ async def api_system_control(action: str):
         return {"status": "error", "message": f"Bare-metal error: {exc}"}
 
     return {"status": "error", "message": "Unknown control action"}
+
+
+@router.post("/api/system/control-intent")
+async def api_system_control_intent(request: Request, payload: dict[str, Any], execute: bool = False):
+    """Validate policy-gated control intents and optionally dispatch allowlisted action."""
+    state._validate_internal_access(request)
+
+    intent = payload.get("intent") if isinstance(payload.get("intent"), dict) else payload
+    accepted, reasons, plane = control_intent_service.evaluate_control_intent(intent)
+
+    action = str(intent.get("recommended_action", "")).strip() if isinstance(intent, dict) else ""
+    response: dict[str, Any] = {
+        "accepted": accepted,
+        "decision_id": (intent.get("decision_id") if isinstance(intent, dict) else None),
+        "recommended_action": action,
+        "policy_profile": (intent.get("policy_profile") if isinstance(intent, dict) else None),
+        "reasons": reasons,
+        "plane_evaluation": plane,
+        "execute_requested": bool(execute),
+        "dispatch": {"executed": False, "status": "skipped", "detail": "execute=false"},
+    }
+
+    if accepted and execute:
+        response["dispatch"] = _dispatch_control_intent_action(action)
+
+    audit_record = {
+        "decision_id": response["decision_id"],
+        "recommended_action": response["recommended_action"],
+        "policy_profile": response["policy_profile"],
+        "accepted": response["accepted"],
+        "reasons": response["reasons"],
+        "plane_evaluation": response["plane_evaluation"],
+        "execute_requested": response["execute_requested"],
+        "dispatch": response["dispatch"],
+    }
+    audit_path = control_intent_service.append_control_intent_audit(audit_record)
+    response["audit_path"] = str(audit_path)
+    return JSONResponse(status_code=200 if accepted else 403, content=response)
 
 
 @router.get("/health")

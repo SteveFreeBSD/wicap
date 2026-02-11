@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import re
-
+from pathlib import Path
 
 _REDIS_PORT_RE = re.compile(r"redis-server\s+--port\s+(\d+)")
 _CONTAINER_NAME_RE = re.compile(r"^\s*container_name:\s*([A-Za-z0-9._-]+)\s*$", re.MULTILINE)

@@ -4,7 +4,9 @@ from nexus.intel.feature_engineering import (
     FeatureWindow,
     FileFeatureStore,
     MemoryFeatureStore,
+    MultiScaleFeatureEngineer,
     StreamingFeatureEngineer,
+    build_feature_engineer,
 )
 
 
@@ -80,3 +82,34 @@ def test_file_feature_store_export(tmp_path):
     results = store.export_windows(0, 200)
     assert len(results) == 1
     assert results[0]["window_start"] == 100.0
+
+
+def test_multiscale_feature_engineer_fans_out_to_sidecars() -> None:
+    primary_store = MemoryFeatureStore()
+    sidecar_store = MemoryFeatureStore()
+    primary = StreamingFeatureEngineer(primary_store, window_sec=300, min_events=1)
+    sidecar = StreamingFeatureEngineer(sidecar_store, window_sec=60, min_events=1)
+    multi = MultiScaleFeatureEngineer(primary=primary, sidecars=[sidecar])
+
+    event = _event(100.0, "deauth", "aa:bb:cc:dd:ee:ff", "11:22:33:44:55:66", 1, 10, 100)
+    multi.ingest_event(event)
+    multi.flush_all()
+
+    assert multi.window_sec == 300
+    assert multi.window_secs == (60, 300)
+    assert len(primary_store.export_windows(0, 1000)) == 2
+    assert len(sidecar_store.export_windows(0, 1000)) == 2
+
+
+def test_build_feature_engineer_enables_default_30_60_300_sidecars(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("WICAP_FEATURE_STREAM_ENABLED", "true")
+    monkeypatch.setenv("WICAP_FEATURE_STORE", "memory")
+    monkeypatch.setenv("WICAP_FEATURE_MIN_EVENTS", "1")
+    monkeypatch.setenv("WICAP_FEATURE_STORE_PATH", str(tmp_path))
+    monkeypatch.delenv("WICAP_FEATURE_WINDOWS_SEC", raising=False)
+    monkeypatch.delenv("WICAP_FEATURE_WINDOW_SEC", raising=False)
+
+    engineer = build_feature_engineer(redis_url=None)
+    assert engineer is not None
+    window_secs = getattr(engineer, "window_secs", ())
+    assert window_secs == (30, 60, 300)

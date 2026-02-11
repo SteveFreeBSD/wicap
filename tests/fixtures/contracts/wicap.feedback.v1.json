@@ -1,0 +1,25 @@
+{
+  "name": "wicap-anomaly-feedback-envelope",
+  "version": "1.0.0",
+  "schema": "wicap.feedback.v1",
+  "feedback_contract_version": "wicap.feedback.v1",
+  "required_top_level_fields": [
+    "feedback_contract_version",
+    "ts",
+    "source",
+    "alert_id",
+    "label"
+  ],
+  "allowed_labels": [
+    "confirmed",
+    "benign",
+    "noisy"
+  ],
+  "optional_top_level_fields": [
+    "attack_id",
+    "attack_type",
+    "bssid",
+    "note"
+  ],
+  "note_max_len": 256
+}

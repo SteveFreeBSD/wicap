@@ -1,8 +1,16 @@
 # WiCAP x WICAP Assistant Cross-Repo Agentic Integration
 
-Status: Planned
+Status: In Progress (W0 artifacts implemented: contract files + schema tests)
 Owner: WiCAP Core (with wicap-assistant integration partners)
 Companion plan: `/home/steve/apps/wicap-assistant/docs/CROSS_REPO_INTELLIGENCE_WORKSLICES.md`
+
+## 0. Implementation Snapshot
+- Implemented W0 baseline artifacts:
+  - `ops/contracts/wicap.event.v1.json`
+  - `ops/contracts/wicap.control.v1.json`
+  - `tests/fixtures/contracts/*` exports
+  - `tests/test_contract_schemas.py` validation suite
+- Remaining W0 work: enforce contract parity as mandatory CI gate shared with assistant repo.
 
 ## 1. Program Objective
 Evolve WiCAP into the runtime intelligence substrate for a new class of network-aware agentic assistants:

@@ -1,0 +1,50 @@
+{
+  "name": "wicap-network-event-envelope",
+  "version": "1.0.0",
+  "schema": "wicap.event.v1",
+  "event_contract_version": "wicap.event.v1",
+  "required_top_level_fields": [
+    "event_contract_version",
+    "ts",
+    "source",
+    "category",
+    "signature",
+    "severity",
+    "sensor_id",
+    "evidence_ref"
+  ],
+  "allowed_sources": [
+    "wifi",
+    "ble",
+    "service",
+    "runtime",
+    "network"
+  ],
+  "allowed_severities": [
+    "info",
+    "low",
+    "medium",
+    "high",
+    "critical"
+  ],
+  "required_evidence_ref_fields": [
+    "kind",
+    "path"
+  ],
+  "flow_fields": {
+    "required_when_present": [
+      "src_ip",
+      "dest_ip",
+      "proto"
+    ],
+    "optional": [
+      "src_port",
+      "dest_port",
+      "duration_seconds",
+      "bytes",
+      "packets",
+      "community_id",
+      "service"
+    ]
+  }
+}

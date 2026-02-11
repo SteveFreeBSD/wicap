@@ -1,6 +1,6 @@
 # WiCAP x WICAP Assistant Cross-Repo Agentic Integration
 
-Status: In Progress (W0-W2 foundations implemented; W3.2/W3.3 anomaly+feedback baselines implemented; W4.1 OTLP baseline implemented)
+Status: In Progress (W0-W2 foundations implemented; W3.2/W3.3 anomaly+feedback baselines implemented; W4.1-W4.3 OTLP baselines implemented)
 Owner: WiCAP Core (with wicap-assistant integration partners)
 Companion plan: `/home/steve/apps/wicap-assistant/docs/CROSS_REPO_INTELLIGENCE_WORKSLICES.md`
 
@@ -26,7 +26,13 @@ Companion plan: `/home/steve/apps/wicap-assistant/docs/CROSS_REPO_INTELLIGENCE_W
   - Feedback route now appends `wicap.feedback.v1` events to `captures/wicap_anomaly_feedback.jsonl`.
 - Implemented W4.1 OTLP collector baseline:
   - compose `otel` profile and `ops/otel/collector-config.yaml` with OTLP receiver and required processors.
-- Remaining: W4.2/W4.3 redaction delivery hardening, W5 rollout gates.
+- Implemented W4.2 redaction policy baseline:
+  - fail-open exporter redacts sensitive key/value paths before OTLP enqueue.
+  - regression tests cover nested secret/token/PII masking behavior.
+- Implemented W4.3 delivery resilience baseline:
+  - bounded queue with retry backoff + non-blocking flush in `event_processor.py`.
+  - collector failure paths remain fail-open and do not degrade batch processing.
+- Remaining: W5 rollout gates.
 
 ## 1. Program Objective
 Evolve WiCAP into the runtime intelligence substrate for a new class of network-aware agentic assistants:
@@ -177,19 +183,21 @@ OTLP-aligned output for:
 - Exit criteria:
   - local runtime exports telemetry through collector with no runtime regressions.
 
-### Work Slice W4.2 - Telemetry Redaction Policy
+### Work Slice W4.2 - Telemetry Redaction Policy (Implemented Baseline)
 - Goal: enforce field-level redaction before OTLP export.
 - Files:
-  - telemetry sanitization modules + config docs.
+  - `src/wicap/telemetry/otlp_resilience.py`
+  - `event_processor.py`
 - Tests:
   - redaction regression tests for secrets/tokens/PII.
 - Exit criteria:
   - sensitive fields blocked from export in CI and runtime tests.
 
-### Work Slice W4.3 - Delivery Resilience
+### Work Slice W4.3 - Delivery Resilience (Implemented Baseline)
 - Goal: telemetry backpressure/failure must not degrade capture/control pipelines.
 - Files:
-  - exporter queueing/retry modules.
+  - `src/wicap/telemetry/otlp_resilience.py`
+  - `event_processor.py`
 - Tests:
   - collector-down and high-latency failure simulations.
 - Exit criteria:

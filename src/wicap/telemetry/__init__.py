@@ -10,12 +10,20 @@ from .network_events import (
     to_suricata_eve_record,
     to_zeek_conn_record,
 )
+from .otlp_resilience import (
+    ResilientOTLPExporter,
+    build_resilient_otlp_exporter,
+    redact_payload,
+)
 
 __all__ = [
     "append_anomaly_events",
+    "build_resilient_otlp_exporter",
     "export_network_events",
     "normalize_wicap_anomaly_event",
     "normalize_wicap_event",
+    "redact_payload",
+    "ResilientOTLPExporter",
     "to_suricata_eve_record",
     "to_zeek_conn_record",
 ]

@@ -123,7 +123,7 @@ S6.4 Anomaly Intelligence Feed
 
 S6.5 Provider-Neutral OTLP Telemetry
 - [x] Add optional collector profile + redaction policy baseline tests.
-- [ ] Ensure telemetry failures do not degrade capture/control paths.
+- [x] Ensure telemetry failures do not degrade capture/control paths.
 
 S6.6 Rollout Gates
 - [ ] Shadow validation and optional Suricata/Zeek parity runs.

@@ -366,9 +366,12 @@ class EventProcessor:
             try:
                 self.feature_engineer = build_feature_engineer(config.redis_url)
                 if self.feature_engineer:
+                    window_list = getattr(self.feature_engineer, "window_secs", None)
                     logger.info(
-                        "Streaming features enabled (window=%ds)",
-                        self.feature_engineer.window_sec,
+                        "Streaming features enabled (windows=%s)",
+                        ",".join(str(int(value)) for value in window_list)
+                        if isinstance(window_list, tuple) and window_list
+                        else str(int(self.feature_engineer.window_sec)),
                     )
             except Exception as exc:
                 logger.warning(f"Feature engineer init failed: {exc}")

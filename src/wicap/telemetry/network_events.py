@@ -6,10 +6,12 @@ from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
+import re
 from typing import Any, Mapping
 
 EVENT_CONTRACT_VERSION = "wicap.event.v1"
 _ALLOWED_SEVERITIES = {"info", "low", "medium", "high", "critical"}
+_MAC_RE = re.compile(r"^[0-9a-f]{2}(?::[0-9a-f]{2}){5}$", re.IGNORECASE)
 
 
 def _first_non_empty_str(*values: object) -> str | None:
@@ -38,6 +40,13 @@ def _to_float(value: object) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _is_mac(value: object) -> bool:
+    text = _first_non_empty_str(value)
+    if text is None:
+        return False
+    return bool(_MAC_RE.fullmatch(text))
 
 
 def _to_iso_utc(ts: object, ts_epoch: object) -> str:
@@ -152,12 +161,19 @@ def _extract_flow(event: Mapping[str, Any]) -> dict[str, Any] | None:
         payload_map.get("src_ip"),
         payload_map.get("source_ip"),
         keys_map.get("sa_ip"),
+        keys_map.get("sa"),
+        keys_map.get("source"),
+        event.get("src_mac"),
     )
     dest_ip = _first_non_empty_str(
         event.get("dest_ip"),
         payload_map.get("dest_ip"),
         payload_map.get("destination_ip"),
         keys_map.get("da_ip"),
+        keys_map.get("da"),
+        keys_map.get("dest"),
+        keys_map.get("bssid"),
+        event.get("dest_mac"),
     )
     proto = _first_non_empty_str(
         event.get("proto"),
@@ -165,6 +181,12 @@ def _extract_flow(event: Mapping[str, Any]) -> dict[str, Any] | None:
         payload_map.get("proto"),
         payload_map.get("protocol"),
     )
+    if not proto:
+        source_hint = _infer_source(event)
+        if source_hint in {"wifi", "ble"}:
+            proto = source_hint
+        elif _is_mac(src_ip) or _is_mac(dest_ip):
+            proto = "wifi"
     if not (src_ip and dest_ip and proto):
         return None
 
@@ -193,6 +215,8 @@ def _extract_flow(event: Mapping[str, Any]) -> dict[str, Any] | None:
         "proto": proto.lower(),
         "community_id": community_id,
     }
+    if _is_mac(src_ip) and _is_mac(dest_ip):
+        flow["endpoint_kind"] = "l2_mac"
     if src_port is not None:
         flow["src_port"] = src_port
     if dest_port is not None:

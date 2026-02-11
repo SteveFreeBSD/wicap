@@ -144,6 +144,7 @@ root, but if you run it manually ensure the directory is writable by the
 
 - `WICAP_FEATURE_STREAM_ENABLED` (default `false`)
 - `WICAP_FEATURE_WINDOW_SEC` (default `300`)
+- `WICAP_FEATURE_WINDOWS_SEC` (default `30,60,300`; comma-separated multi-resolution windows)
 - `WICAP_FEATURE_MIN_EVENTS` (default `20`)
 - `WICAP_FEATURE_RETENTION_SEC` (default `604800` / 7 days)
 - `WICAP_FEATURE_STORE` (`redis`, `file`, `memory`, `off`)

@@ -1,6 +1,6 @@
 # WiCAP x WICAP Assistant Cross-Repo Agentic Integration
 
-Status: In Progress (W0-W4 foundations implemented; W5 rollout-gate baselines implemented)
+Status: In Progress (W0-W5 implemented baselines; production threshold tuning remains deployment-specific)
 Owner: WiCAP Core (with wicap-assistant integration partners)
 Companion plan: `/home/steve/apps/wicap-assistant/docs/CROSS_REPO_INTELLIGENCE_WORKSLICES.md`
 
@@ -24,6 +24,9 @@ Companion plan: `/home/steve/apps/wicap-assistant/docs/CROSS_REPO_INTELLIGENCE_W
 - Implemented W3.3 feedback capture baseline:
   - `ops/contracts/wicap.feedback.v1.json` + fixture parity tests.
   - Feedback route now appends `wicap.feedback.v1` events to `captures/wicap_anomaly_feedback.jsonl`.
+- Implemented W3.1 multi-window aggregation baseline:
+  - streaming feature engineering now emits 30s/60s/5m windows for anomaly analysis.
+  - multi-resolution windows are persisted deterministically for replay/baseline/scoring workflows.
 - Implemented W4.1 OTLP collector baseline:
   - compose `otel` profile and `ops/otel/collector-config.yaml` with OTLP receiver and required processors.
 - Implemented W4.2 redaction policy baseline:
@@ -147,7 +150,7 @@ OTLP-aligned output for:
 
 ## Milestone W3: Anomaly Intelligence Feed
 
-### Work Slice W3.1 - Windowed Feature Aggregation
+### Work Slice W3.1 - Windowed Feature Aggregation (Implemented Baseline)
 - Goal: publish 30s/60s/5m feature windows for anomaly scoring.
 - Files:
   - `nexus/intel/*`

@@ -99,7 +99,7 @@ S5.6 Public Review Gate
 - [x] Run full test suite, docs link check, and grep-based dead-code scan in one gate command.
 - [x] Publish a dated cleanup report in `docs/reports/` summarizing removed items and residual risks.
 
-### Milestone S6: Cross-Repo Agentic Integration [IN PROGRESS]
+### Milestone S6: Cross-Repo Agentic Integration [COMPLETED]
 
 Goal: make WiCAP the canonical runtime intelligence substrate for WICAP Assistant as a network-aware agentic system, with strict policy guardrails and provider-neutral OTLP observability.
 
@@ -128,6 +128,9 @@ S6.5 Provider-Neutral OTLP Telemetry
 S6.6 Rollout Gates
 - [x] Shadow validation and optional Suricata/Zeek parity runs.
 - [x] Canary -> production promotion based on SLOs.
+
+Post-completion note:
+- Deployment-specific threshold tuning remains an operational responsibility and is tracked in release runbooks, not as missing implementation scope.
 
 Detailed workslices and acceptance criteria: `docs/CROSS_REPO_AGENTIC_INTEGRATION.md`.
 

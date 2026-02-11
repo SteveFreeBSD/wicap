@@ -82,6 +82,32 @@ def test_community_id_is_stable_for_bidirectional_flow() -> None:
     assert forward["flow"]["community_id"] == reverse["flow"]["community_id"]
 
 
+def test_normalize_wicap_event_falls_back_to_l2_flow_when_ip_fields_absent() -> None:
+    normalized = normalize_wicap_event(
+        {
+            "ts_epoch": 1768800100.0,
+            "event_type": "new_bssid",
+            "keys": {
+                "bssid": "aa:bb:cc:dd:ee:ff",
+                "sa": "11:22:33:44:55:66",
+                "da": "77:88:99:aa:bb:cc",
+            },
+        }
+    )
+
+    flow = normalized.get("flow")
+    assert isinstance(flow, dict)
+    assert flow["src_ip"] == "11:22:33:44:55:66"
+    assert flow["dest_ip"] == "77:88:99:aa:bb:cc"
+    assert flow["proto"] == "wifi"
+    assert flow["endpoint_kind"] == "l2_mac"
+
+    conn_record = to_zeek_conn_record(normalized)
+    assert conn_record is not None
+    assert conn_record["id.orig_h"] == "11:22:33:44:55:66"
+    assert conn_record["id.resp_h"] == "77:88:99:aa:bb:cc"
+
+
 def test_export_network_events_writes_contract_conn_and_eve_outputs(tmp_path: Path) -> None:
     input_path = tmp_path / "curated_events.jsonl"
     output_path = tmp_path / "wicap_network_events.jsonl"
@@ -128,3 +154,32 @@ def test_export_network_events_writes_contract_conn_and_eve_outputs(tmp_path: Pa
     eve_record = to_suricata_eve_record(first_normalized)
     assert conn_record is not None
     assert eve_record["timestamp"] == first_normalized["ts"]
+
+
+def test_export_network_events_writes_conn_rows_for_l2_wifi_events(tmp_path: Path) -> None:
+    input_path = tmp_path / "curated_events.jsonl"
+    output_path = tmp_path / "wicap_network_events.jsonl"
+    conn_path = tmp_path / "zeek_conn_compat.jsonl"
+    input_path.write_text(
+        json.dumps(
+            {
+                "ts_epoch": 1768800200.0,
+                "event_type": "new_bssid",
+                "keys": {
+                    "bssid": "aa:bb:cc:dd:ee:ff",
+                    "sa": "11:22:33:44:55:66",
+                    "da": "77:88:99:aa:bb:cc",
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    summary = export_network_events(
+        input_path=input_path,
+        output_path=output_path,
+        conn_output_path=conn_path,
+    )
+    assert int(summary["exported"]) == 1
+    assert int(summary["conn_rows"]) == 1

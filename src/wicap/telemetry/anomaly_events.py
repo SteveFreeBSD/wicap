@@ -10,6 +10,7 @@ from typing import Any
 
 ANOMALY_CONTRACT_VERSION = "wicap.anomaly.v1"
 ANOMALY_CONTRACT_VERSION_V2 = "wicap.anomaly.v2"
+ANOMALY_CONTRACT_VERSION_V3 = "wicap.anomaly.v3"
 
 
 def _score_value(score: object, field: str, default: object = None) -> object:
@@ -167,6 +168,38 @@ def normalize_wicap_anomaly_event_v2(
     return payload
 
 
+def normalize_wicap_anomaly_event_v3(
+    score: object,
+    *,
+    sensor_id: str = "wicap-local",
+) -> dict[str, Any]:
+    """Normalize one stream anomaly score into `wicap.anomaly.v3`."""
+    payload = normalize_wicap_anomaly_event_v2(score, sensor_id=sensor_id)
+    payload["anomaly_contract_version"] = ANOMALY_CONTRACT_VERSION_V3
+    primary_score = round(_safe_float(payload.get("primary_score", payload.get("score", 0.0))), 6)
+    vote_agreement = round(_safe_float(payload.get("vote_agreement", 0.0)), 6)
+    fusion_score = _safe_float(_score_value(score, "fusion_score", None), default=-1.0)
+    if fusion_score < 0:
+        fusion_score = (primary_score * 0.7) + (vote_agreement * 100.0 * 0.3)
+
+    predictive_horizon = _safe_int(_score_value(score, "predictive_horizon_sec", 300), default=300)
+    route_confidence = _safe_float(_score_value(score, "route_confidence", vote_agreement), default=vote_agreement)
+    drift_state = payload.get("drift_state", {})
+    drift_delta = _safe_float((drift_state or {}).get("delta", 0.0))
+    drift_status = str((drift_state or {}).get("status", "stable")).strip().lower()
+    guard_status = "guarded" if drift_status in {"drift", "triggered"} else "stable"
+    bounded_delta = min(100.0, max(0.0, abs(drift_delta)))
+    payload["fusion_score"] = round(float(max(0.0, min(100.0, fusion_score))), 6)
+    payload["predictive_horizon_sec"] = int(max(60, predictive_horizon))
+    payload["route_confidence"] = round(float(max(0.0, min(1.0, route_confidence))), 6)
+    payload["drift_guard"] = {
+        "status": guard_status,
+        "bounded_delta": round(float(bounded_delta), 6),
+        "rollback_ready": bool(guard_status != "stable"),
+    }
+    return payload
+
+
 def append_anomaly_events(
     *,
     output_path: Path,
@@ -200,6 +233,26 @@ def append_anomaly_events_v2(
     with output_path.open("a", encoding="utf-8") as handle:
         for score in scores:
             payload = normalize_wicap_anomaly_event_v2(score, sensor_id=sensor_id)
+            if anomalies_only and not bool(payload.get("is_anomaly")):
+                continue
+            handle.write(json.dumps(payload, separators=(",", ":")) + "\n")
+            written += 1
+    return int(written)
+
+
+def append_anomaly_events_v3(
+    *,
+    output_path: Path,
+    scores: Sequence[object],
+    sensor_id: str = "wicap-local",
+    anomalies_only: bool = True,
+) -> int:
+    """Append normalized anomaly events to `wicap.anomaly.v3` JSONL artifact path."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    written = 0
+    with output_path.open("a", encoding="utf-8") as handle:
+        for score in scores:
+            payload = normalize_wicap_anomaly_event_v3(score, sensor_id=sensor_id)
             if anomalies_only and not bool(payload.get("is_anomaly")):
                 continue
             handle.write(json.dumps(payload, separators=(",", ":")) + "\n")

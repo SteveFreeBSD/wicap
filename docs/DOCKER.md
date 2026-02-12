@@ -13,12 +13,17 @@ This document covers building, running, and managing WICAP in Docker containers.
 ## Quick Start
 
 ```bash
-# Build and start
-docker compose up -d --build
+# Build and start core services first
+docker compose up -d --build redis processor ui
+curl -fsS http://127.0.0.1:8080/health
+
+# Start scout only after capture interface safety checks
+docker compose up -d scout
 ```
 
 Redis startup is health-gated; `scout`/`processor`/`ui` wait for Redis `PING`
 success before starting.
+When operating over Wi-Fi SSH, prefer launching `scout` from `tmux` or local console.
 
 ## Services
 

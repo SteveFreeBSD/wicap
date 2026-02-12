@@ -6,10 +6,13 @@ from pathlib import Path
 from src.wicap.telemetry.anomaly_events import (
     ANOMALY_CONTRACT_VERSION,
     ANOMALY_CONTRACT_VERSION_V2,
+    ANOMALY_CONTRACT_VERSION_V3,
     append_anomaly_events,
     append_anomaly_events_v2,
+    append_anomaly_events_v3,
     normalize_wicap_anomaly_event,
     normalize_wicap_anomaly_event_v2,
+    normalize_wicap_anomaly_event_v3,
 )
 from src.wicap.telemetry.prediction_events import (
     PREDICTION_CONTRACT_VERSION,
@@ -112,6 +115,28 @@ def test_append_anomaly_events_v2_writes_jsonl_rows(tmp_path: Path) -> None:
     rows = [json.loads(line) for line in output_path.read_text(encoding="utf-8").splitlines() if line.strip()]
     assert len(rows) == 1
     assert rows[0]["anomaly_contract_version"] == ANOMALY_CONTRACT_VERSION_V2
+
+
+def test_normalize_wicap_anomaly_event_v3_emits_fusion_fields() -> None:
+    score = _sample_anomaly(is_anomaly=True)
+    score["shadow_scores"] = {"mad_robust": 71.2, "ewma_drift": 18.5}
+    score["model_votes"] = {"primary": True, "mad_robust": True, "ewma_drift": False}
+    payload = normalize_wicap_anomaly_event_v3(score, sensor_id="sensor-v3")
+    assert payload["anomaly_contract_version"] == ANOMALY_CONTRACT_VERSION_V3
+    assert "fusion_score" in payload
+    assert "predictive_horizon_sec" in payload
+    assert "route_confidence" in payload
+    assert isinstance(payload.get("drift_guard"), dict)
+
+
+def test_append_anomaly_events_v3_writes_jsonl_rows(tmp_path: Path) -> None:
+    output_path = tmp_path / "wicap_anomaly_events_v3.jsonl"
+    scores = [_sample_anomaly(is_anomaly=False), _sample_anomaly(is_anomaly=True)]
+    written = append_anomaly_events_v3(output_path=output_path, scores=scores, sensor_id="sensor-v3")
+    assert int(written) == 1
+    rows = [json.loads(line) for line in output_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert len(rows) == 1
+    assert rows[0]["anomaly_contract_version"] == ANOMALY_CONTRACT_VERSION_V3
 
 
 def test_build_prediction_events_and_append_jsonl(tmp_path: Path) -> None:

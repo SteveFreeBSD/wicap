@@ -84,6 +84,44 @@ def test_wicap_control_contract_shape_and_allowlist_fields() -> None:
     assert max_verification_steps > 0
 
 
+def test_wicap_control_v2_contract_shape_and_trace_fields() -> None:
+    contract = _read_json(_CONTRACT_DIR / "wicap.control.v2.json")
+    assert contract.get("schema") == "wicap.control.v2"
+    assert contract.get("control_intent_version") == "wicap.control.v2"
+    required = contract.get("required_top_level_fields")
+    assert isinstance(required, list)
+    required_set = {str(item) for item in required}
+    for key in {"policy_trace", "failover", "mission"}:
+        assert key in required_set
+
+    policy_trace_fields = contract.get("required_policy_trace_fields")
+    assert isinstance(policy_trace_fields, list)
+    assert {str(item) for item in policy_trace_fields} >= {
+        "trace_id",
+        "plane_decisions",
+        "deny_reasons",
+        "budget_state",
+    }
+
+    failover_fields = contract.get("required_failover_fields")
+    assert isinstance(failover_fields, list)
+    assert {str(item) for item in failover_fields} >= {
+        "auth_profile",
+        "attempt",
+        "cooldown_until",
+        "failure_class",
+    }
+
+    mission_fields = contract.get("required_mission_fields")
+    assert isinstance(mission_fields, list)
+    assert {str(item) for item in mission_fields} >= {
+        "graph_id",
+        "step_id",
+        "step_type",
+        "terminal_state",
+    }
+
+
 def test_wicap_anomaly_contract_shape_and_feature_window_fields() -> None:
     contract = _read_json(_CONTRACT_DIR / "wicap.anomaly.v1.json")
 
@@ -168,6 +206,26 @@ def test_wicap_anomaly_v2_contract_shape_and_shadow_fields() -> None:
     }
 
 
+def test_wicap_anomaly_v3_contract_shape_and_fusion_fields() -> None:
+    contract = _read_json(_CONTRACT_DIR / "wicap.anomaly.v3.json")
+    assert contract.get("schema") == "wicap.anomaly.v3"
+    assert contract.get("anomaly_contract_version") == "wicap.anomaly.v3"
+
+    required = contract.get("required_top_level_fields")
+    assert isinstance(required, list)
+    required_set = {str(item) for item in required}
+    for key in {"fusion_score", "predictive_horizon_sec", "route_confidence", "drift_guard"}:
+        assert key in required_set
+
+    drift_guard_fields = contract.get("required_drift_guard_fields")
+    assert isinstance(drift_guard_fields, list)
+    assert {str(item) for item in drift_guard_fields} >= {
+        "status",
+        "bounded_delta",
+        "rollback_ready",
+    }
+
+
 def test_wicap_prediction_contract_shape_and_horizons() -> None:
     contract = _read_json(_CONTRACT_DIR / "wicap.prediction.v1.json")
 
@@ -195,9 +253,11 @@ def test_contract_fixtures_match_contract_files() -> None:
     for name in (
         "wicap.event.v1.json",
         "wicap.control.v1.json",
+        "wicap.control.v2.json",
         "wicap.anomaly.v1.json",
         "wicap.feedback.v1.json",
         "wicap.anomaly.v2.json",
+        "wicap.anomaly.v3.json",
         "wicap.prediction.v1.json",
     ):
         contract = _read_json(_CONTRACT_DIR / name)

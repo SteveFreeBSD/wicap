@@ -166,3 +166,47 @@ def test_run_agentic_rollout_gate_enforce_fails_when_shadow_gate_required_and_fa
     payload = json.loads(result.stdout)
     assert bool(payload["overall_pass"]) is False
     assert payload["gates"]["shadow_validation"]["status"] in {"fail", "insufficient_data"}
+
+
+def test_run_agentic_rollout_gate_shadow_failure_is_informational_when_not_required(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    script = repo_root / "scripts" / "run_agentic_rollout_gate.py"
+    captures_dir = tmp_path / "captures"
+    _write_runtime_files(
+        captures_dir,
+        curated_event={
+            "ts_epoch": 1768800000.0,
+            "event_type": "telemetry_pulse",
+            "protocol": "runtime",
+            "score": 0,
+        },
+    )
+    assistant_report = tmp_path / "assistant_rollout.json"
+    assistant_report.write_text(
+        json.dumps({"overall_pass": True, "promotion": {"ready": True}}),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--captures-dir",
+            str(captures_dir),
+            "--assistant-rollout-report",
+            str(assistant_report),
+            "--shadow-work-dir",
+            str(tmp_path / "shadow"),
+            "--enforce",
+            "--json",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd=str(repo_root),
+    )
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert bool(payload["overall_pass"]) is True
+    assert payload["gates"]["shadow_validation"]["status"] in {"fail", "insufficient_data"}

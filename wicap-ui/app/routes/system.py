@@ -85,6 +85,86 @@ def _control_plane_state() -> dict[str, Any]:
     }
 
 
+def _failover_state_path() -> Path:
+    raw = os.getenv("WICAP_CONTROL_FAILOVER_STATE_PATH", "").strip()
+    if raw:
+        return Path(raw).expanduser()
+    return REPO_ROOT / "captures" / "failover_state.json"
+
+
+def _load_failover_state() -> dict[str, Any]:
+    path = _failover_state_path()
+    payload: dict[str, Any] = {
+        "state_path": str(path),
+        "auth_profile": os.getenv("WICAP_CONTROL_AUTH_PROFILE", "primary"),
+        "attempt": 0,
+        "cooldown_until": os.getenv("WICAP_CONTROL_ACTION_COOLDOWN_UNTIL", "").strip() or None,
+        "failure_class": "none",
+        "disabled_until": None,
+        "updated_ts": None,
+    }
+    if not path.exists():
+        return payload
+    try:
+        parsed = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return payload
+    if not isinstance(parsed, dict):
+        return payload
+    payload.update(
+        {
+            "auth_profile": str(parsed.get("auth_profile", payload["auth_profile"])).strip() or payload["auth_profile"],
+            "attempt": int(parsed.get("attempt", 0) or 0),
+            "cooldown_until": parsed.get("cooldown_until"),
+            "failure_class": str(parsed.get("failure_class", "none")).strip() or "none",
+            "disabled_until": parsed.get("disabled_until"),
+            "updated_ts": parsed.get("updated_ts"),
+        }
+    )
+    return payload
+
+
+def _intent_with_v2_defaults(intent: dict[str, Any], *, plane: dict[str, Any]) -> dict[str, Any]:
+    payload = dict(intent)
+    payload.setdefault(
+        "policy_trace",
+        {
+            "trace_id": str(payload.get("decision_id", "")).strip() or "trace-missing",
+            "plane_decisions": {
+                "runtime_plane": bool(plane.get("runtime_plane", False)),
+                "tool_policy_plane": bool(plane.get("tool_policy_plane", False)),
+                "elevated_plane": bool(plane.get("elevated_plane", False)),
+            },
+            "deny_reasons": [],
+            "budget_state": {
+                "action_budget_used": 0,
+                "action_budget_max": None,
+                "elevated_action_budget_used": 0,
+                "elevated_action_budget_max": None,
+            },
+        },
+    )
+    payload.setdefault(
+        "failover",
+        {
+            "auth_profile": "primary",
+            "attempt": 0,
+            "cooldown_until": None,
+            "failure_class": "none",
+        },
+    )
+    payload.setdefault(
+        "mission",
+        {
+            "graph_id": "default-mission",
+            "step_id": "observe",
+            "step_type": "observe",
+            "terminal_state": "running",
+        },
+    )
+    return payload
+
+
 def _read_redis_queue_depth(redis_url: str) -> int | None:
     if not redis_url:
         return None
@@ -417,6 +497,97 @@ async def api_system_control_intent(request: Request, payload: dict[str, Any], e
     audit_path = control_intent_service.append_control_intent_audit(audit_record)
     response["audit_path"] = str(audit_path)
     return JSONResponse(status_code=200 if accepted else 403, content=response)
+
+
+@router.post("/api/system/control-intent/v2")
+async def api_system_control_intent_v2(request: Request, payload: dict[str, Any], execute: bool = False):
+    """Validate v2 control intents with dual-read compatibility and optional dispatch."""
+    state._validate_internal_access(request)
+
+    intent = payload.get("intent") if isinstance(payload.get("intent"), dict) else payload
+    if not isinstance(intent, dict):
+        intent = {}
+    requested_version = str(intent.get("control_intent_version", "wicap.control.v2")).strip().lower()
+    if requested_version == "wicap.control.v1":
+        contract = control_intent_service.load_control_contract(version="v1")
+    else:
+        contract = control_intent_service.load_control_contract(version="v2")
+        intent = _intent_with_v2_defaults(intent, plane=_control_plane_state())
+
+    accepted, reasons, plane = control_intent_service.evaluate_control_intent(intent, contract=contract)
+    action = str(intent.get("recommended_action", "")).strip() if isinstance(intent, dict) else ""
+    response: dict[str, Any] = {
+        "accepted": accepted,
+        "decision_id": intent.get("decision_id"),
+        "recommended_action": action,
+        "policy_profile": intent.get("policy_profile"),
+        "profile_version": intent.get("profile_version") or plane.get("profile_version"),
+        "reasons": reasons,
+        "policy_eval": plane,
+        "denied_by": plane.get("denied_by"),
+        "cooldown_until": plane.get("cooldown_until"),
+        "plane_evaluation": plane,
+        "execute_requested": bool(execute),
+        "dispatch": {"executed": False, "status": "skipped", "detail": "execute=false"},
+        "policy_trace": intent.get("policy_trace"),
+        "failover": intent.get("failover"),
+        "mission": intent.get("mission"),
+    }
+    if accepted and execute:
+        response["dispatch"] = _dispatch_control_intent_action(action)
+
+    audit_record = {
+        "decision_id": response["decision_id"],
+        "recommended_action": response["recommended_action"],
+        "policy_profile": response["policy_profile"],
+        "profile_version": response["profile_version"],
+        "accepted": response["accepted"],
+        "denied_by": response["denied_by"],
+        "cooldown_until": response["cooldown_until"],
+        "reasons": response["reasons"],
+        "policy_eval": response["policy_eval"],
+        "policy_trace": response.get("policy_trace"),
+        "failover": response.get("failover"),
+        "mission": response.get("mission"),
+        "execute_requested": response["execute_requested"],
+        "dispatch": response["dispatch"],
+        "endpoint": "control-intent/v2",
+    }
+    audit_path = control_intent_service.append_control_intent_audit(audit_record)
+    response["audit_path"] = str(audit_path)
+    return JSONResponse(status_code=200 if accepted else 403, content=response)
+
+
+@router.get("/api/system/policy-explain")
+async def api_system_policy_explain(request: Request):
+    """Expose active control-plane policy snapshot for operator-grade explainability."""
+    state._validate_internal_access(request)
+    capture_dir = _get_capture_dir()
+    anomaly_v2 = _read_tail_json(capture_dir / "wicap_anomaly_events_v2.jsonl")
+    prediction = _read_tail_json(capture_dir / "wicap_predictions.jsonl")
+    payload = {
+        "generated_ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "control_plane": _control_plane_state(),
+        "active_contracts": {
+            "control_v1": str(control_intent_service.DEFAULT_CONTROL_CONTRACT_PATH),
+            "control_v2": str(control_intent_service.DEFAULT_CONTROL_CONTRACT_V2_PATH),
+        },
+        "failover": _load_failover_state(),
+        "intel_worker": {
+            "latest_anomaly_ts": anomaly_v2.get("ts") if isinstance(anomaly_v2, dict) else None,
+            "latest_prediction_ts": prediction.get("ts") if isinstance(prediction, dict) else None,
+        },
+    }
+    return JSONResponse(status_code=200, content=payload)
+
+
+@router.get("/api/system/failover-state")
+async def api_system_failover_state(request: Request):
+    """Return deterministic failover profile state for control-plane debugging."""
+    state._validate_internal_access(request)
+    payload = _load_failover_state()
+    payload["generated_ts"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    return JSONResponse(status_code=200, content=payload)
 
 
 @router.get("/health")

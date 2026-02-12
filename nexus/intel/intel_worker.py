@@ -1,4 +1,4 @@
-"""Standalone sidecar worker for anomaly v2 and prediction artifact emission."""
+"""Standalone sidecar worker for anomaly v2/v3 and prediction artifact emission."""
 
 from __future__ import annotations
 
@@ -12,7 +12,11 @@ from typing import Any
 from nexus.intel.feature_engineering import build_feature_store
 from nexus.intel.stream_baseline import build_baseline_updater
 from nexus.intel.stream_scoring import build_stream_scorer
-from src.wicap.telemetry.anomaly_events import append_anomaly_events, append_anomaly_events_v2
+from src.wicap.telemetry.anomaly_events import (
+    append_anomaly_events,
+    append_anomaly_events_v2,
+    append_anomaly_events_v3,
+)
 from src.wicap.telemetry.prediction_events import append_prediction_events, build_prediction_events
 
 logger = logging.getLogger("nexus.intel.intel_worker")
@@ -68,6 +72,7 @@ def run_intel_worker_loop(
     captures_dir = _captures_dir()
     anomaly_path_v1 = Path(os.getenv("WICAP_ANOMALY_EVENTS_PATH", str(captures_dir / "wicap_anomaly_events.jsonl")))
     anomaly_path_v2 = Path(os.getenv("WICAP_ANOMALY_EVENTS_V2_PATH", str(captures_dir / "wicap_anomaly_events_v2.jsonl")))
+    anomaly_path_v3 = Path(os.getenv("WICAP_ANOMALY_EVENTS_V3_PATH", str(captures_dir / "wicap_anomaly_events_v3.jsonl")))
     prediction_path = Path(os.getenv("WICAP_PREDICTION_EVENTS_PATH", str(captures_dir / "wicap_predictions.jsonl")))
     horizons = _prediction_horizons()
     sleep_seconds = max(0.5, float(interval_seconds))
@@ -118,6 +123,12 @@ def run_intel_worker_loop(
                 )
                 append_anomaly_events_v2(
                     output_path=anomaly_path_v2,
+                    scores=scores,
+                    sensor_id=sensor_id,
+                    anomalies_only=True,
+                )
+                append_anomaly_events_v3(
+                    output_path=anomaly_path_v3,
                     scores=scores,
                     sensor_id=sensor_id,
                     anomalies_only=True,

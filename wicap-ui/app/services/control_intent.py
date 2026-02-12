@@ -11,6 +11,7 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_CONTROL_CONTRACT_PATH = REPO_ROOT / "ops" / "contracts" / "wicap.control.v1.json"
+DEFAULT_CONTROL_CONTRACT_V2_PATH = REPO_ROOT / "ops" / "contracts" / "wicap.control.v2.json"
 DEFAULT_AUDIT_PATH = REPO_ROOT / "captures" / "control_intent_audit.jsonl"
 
 _ENV_RUNTIME_PLANE_ENABLED = "WICAP_CONTROL_RUNTIME_PLANE_ENABLED"
@@ -48,6 +49,41 @@ _FALLBACK_CONTRACT: dict[str, Any] = {
         "cooldown_until",
         "policy_eval",
     ],
+}
+
+_FALLBACK_CONTRACT_V2: dict[str, Any] = {
+    "schema": "wicap.control.v2",
+    "control_intent_version": "wicap.control.v2",
+    "required_top_level_fields": [
+        "control_intent_version",
+        "decision_id",
+        "ts",
+        "policy_profile",
+        "recommended_action",
+        "safety_class",
+        "required_prechecks",
+        "verification_steps",
+        "policy_trace",
+        "failover",
+        "mission",
+    ],
+    "allowed_policy_profiles": ["observe-v1", "assist-v1", "autonomous-v1"],
+    "allowed_safety_classes": ["safe", "caution", "blocked"],
+    "allowlisted_actions": ["status_check", "compose_up", "shutdown"],
+    "allowlisted_action_prefixes": ["restart_service:"],
+    "allowed_restart_services": ["wicap-ui", "wicap-processor", "wicap-scout", "wicap-redis"],
+    "max_verification_steps": 10,
+    "optional_top_level_fields": [
+        "confidence",
+        "reasoning_class",
+        "profile_version",
+        "runbook_generation_id",
+        "cooldown_until",
+        "policy_eval",
+    ],
+    "required_policy_trace_fields": ["trace_id", "plane_decisions", "deny_reasons", "budget_state"],
+    "required_failover_fields": ["auth_profile", "attempt", "cooldown_until", "failure_class"],
+    "required_mission_fields": ["graph_id", "step_id", "step_type", "terminal_state"],
 }
 
 
@@ -115,18 +151,31 @@ def _plane_evaluation(
     }
 
 
-@lru_cache(maxsize=4)
-def load_control_contract(path: str | None = None) -> dict[str, Any]:
+def _fallback_contract(version: str) -> dict[str, Any]:
+    normalized = str(version).strip().lower()
+    if normalized == "v2":
+        return dict(_FALLBACK_CONTRACT_V2)
+    return dict(_FALLBACK_CONTRACT)
+
+
+@lru_cache(maxsize=8)
+def load_control_contract(path: str | None = None, *, version: str = "v1") -> dict[str, Any]:
     """Load control intent contract JSON with fallback defaults."""
-    contract_path = Path(path).resolve() if path else DEFAULT_CONTROL_CONTRACT_PATH
+    normalized_version = str(version).strip().lower()
+    if path:
+        contract_path = Path(path).resolve()
+    elif normalized_version == "v2":
+        contract_path = DEFAULT_CONTROL_CONTRACT_V2_PATH
+    else:
+        contract_path = DEFAULT_CONTROL_CONTRACT_PATH
     if not contract_path.exists():
-        return dict(_FALLBACK_CONTRACT)
+        return _fallback_contract(normalized_version)
     try:
         payload = json.loads(contract_path.read_text(encoding="utf-8"))
     except Exception:
-        return dict(_FALLBACK_CONTRACT)
+        return _fallback_contract(normalized_version)
     if not isinstance(payload, dict):
-        return dict(_FALLBACK_CONTRACT)
+        return _fallback_contract(normalized_version)
     return payload
 
 
@@ -241,6 +290,39 @@ def validate_control_intent(
     policy_eval = payload.get("policy_eval")
     if policy_eval is not None and not isinstance(policy_eval, dict):
         errors.append("policy_eval must be an object when provided")
+
+    required_policy_trace_fields = spec.get("required_policy_trace_fields")
+    if isinstance(required_policy_trace_fields, list):
+        trace = payload.get("policy_trace")
+        if not isinstance(trace, dict):
+            errors.append("policy_trace must be an object")
+        else:
+            for field in required_policy_trace_fields:
+                key = str(field).strip()
+                if key and key not in trace:
+                    errors.append(f"policy_trace missing required field: {key}")
+
+    required_failover_fields = spec.get("required_failover_fields")
+    if isinstance(required_failover_fields, list):
+        failover = payload.get("failover")
+        if not isinstance(failover, dict):
+            errors.append("failover must be an object")
+        else:
+            for field in required_failover_fields:
+                key = str(field).strip()
+                if key and key not in failover:
+                    errors.append(f"failover missing required field: {key}")
+
+    required_mission_fields = spec.get("required_mission_fields")
+    if isinstance(required_mission_fields, list):
+        mission = payload.get("mission")
+        if not isinstance(mission, dict):
+            errors.append("mission must be an object")
+        else:
+            for field in required_mission_fields:
+                key = str(field).strip()
+                if key and key not in mission:
+                    errors.append(f"mission missing required field: {key}")
 
     return len(errors) == 0, errors
 

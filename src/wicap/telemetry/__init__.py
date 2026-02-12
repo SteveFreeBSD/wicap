@@ -2,8 +2,10 @@
 
 from .anomaly_events import (
     append_anomaly_events_v2,
+    append_anomaly_events_v3,
     append_anomaly_events,
     normalize_wicap_anomaly_event_v2,
+    normalize_wicap_anomaly_event_v3,
     normalize_wicap_anomaly_event,
 )
 from .prediction_events import (
@@ -28,6 +30,7 @@ from .otlp_resilience import (
 __all__ = [
     "append_anomaly_events",
     "append_anomaly_events_v2",
+    "append_anomaly_events_v3",
     "append_prediction_events",
     "build_prediction_events",
     "build_resilient_otlp_exporter",
@@ -35,6 +38,7 @@ __all__ = [
     "PREDICTION_CONTRACT_VERSION",
     "normalize_wicap_anomaly_event",
     "normalize_wicap_anomaly_event_v2",
+    "normalize_wicap_anomaly_event_v3",
     "normalize_wicap_event",
     "OtlpExportConfig",
     "redact_payload",

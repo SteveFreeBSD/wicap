@@ -233,17 +233,11 @@ def evaluate_agentic_rollout_gate(
             "promotion": assistant_report.get("promotion"),
         }
 
-    shadow_required_pass = bool(shadow_gate.get("pass", False))
-    if not require_shadow_data and str(shadow_gate.get("status")) == "insufficient_data":
-        shadow_required_pass = True
-
     overall_pass = bool(local_gate.get("pass"))
     if bool(require_assistant):
         overall_pass = overall_pass and bool(assistant_gate.get("pass"))
     if bool(require_shadow_data):
         overall_pass = overall_pass and bool(shadow_gate.get("pass"))
-    else:
-        overall_pass = overall_pass and bool(shadow_required_pass)
 
     return {
         "generated_ts": _now_iso(),

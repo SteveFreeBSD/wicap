@@ -58,8 +58,12 @@ Key docs:
 3.  Run the stack (see `docs/DOCKER.md` for details):
 
 ```bash
-docker compose up -d --build
+docker compose up -d --build redis processor ui
+curl -fsS http://127.0.0.1:8080/health
+# Start scout only after verifying a dedicated capture interface.
+docker compose up -d scout
 ```
+If you are connected over Wi-Fi SSH, start `scout` from `tmux` or local console to avoid dropping the management session on single-NIC hosts.
 
 ### Offline / Air-Gapped Setup
 

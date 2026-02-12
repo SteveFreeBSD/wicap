@@ -50,18 +50,20 @@ class _FakeScorer:
         return 0
 
 
-def test_intel_worker_once_writes_v1_v2_and_prediction_artifacts(
+def test_intel_worker_once_writes_v1_v2_v3_and_prediction_artifacts(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     captures = tmp_path / "captures"
     anomaly_v1 = captures / "wicap_anomaly_events.jsonl"
     anomaly_v2 = captures / "wicap_anomaly_events_v2.jsonl"
+    anomaly_v3 = captures / "wicap_anomaly_events_v3.jsonl"
     prediction = captures / "wicap_predictions.jsonl"
 
     monkeypatch.setenv("WICAP_CAPTURES_DIR", str(captures))
     monkeypatch.setenv("WICAP_ANOMALY_EVENTS_PATH", str(anomaly_v1))
     monkeypatch.setenv("WICAP_ANOMALY_EVENTS_V2_PATH", str(anomaly_v2))
+    monkeypatch.setenv("WICAP_ANOMALY_EVENTS_V3_PATH", str(anomaly_v3))
     monkeypatch.setenv("WICAP_PREDICTION_EVENTS_PATH", str(prediction))
     monkeypatch.setenv("WICAP_PREDICTION_HORIZONS_SEC", "300,1800")
     monkeypatch.setenv("WICAP_SENSOR_ID", "sensor-test")
@@ -77,11 +79,15 @@ def test_intel_worker_once_writes_v1_v2_and_prediction_artifacts(
 
     assert anomaly_v1.exists()
     assert anomaly_v2.exists()
+    assert anomaly_v3.exists()
     assert prediction.exists()
 
     row_v2 = json.loads(anomaly_v2.read_text(encoding="utf-8").splitlines()[0])
     assert row_v2["anomaly_contract_version"] == "wicap.anomaly.v2"
     assert "drift_state" in row_v2
+    row_v3 = json.loads(anomaly_v3.read_text(encoding="utf-8").splitlines()[0])
+    assert row_v3["anomaly_contract_version"] == "wicap.anomaly.v3"
+    assert "fusion_score" in row_v3
 
     prediction_rows = [json.loads(line) for line in prediction.read_text(encoding="utf-8").splitlines() if line.strip()]
     assert {int(item["horizon_sec"]) for item in prediction_rows} == {300, 1800}

@@ -1,0 +1,74 @@
+{
+  "name": "wicap-control-intent-envelope-v2",
+  "version": "2.0.0",
+  "schema": "wicap.control.v2",
+  "control_intent_version": "wicap.control.v2",
+  "compatibility": {
+    "supersedes": "wicap.control.v1",
+    "dual_read_write_waves": 2
+  },
+  "required_top_level_fields": [
+    "control_intent_version",
+    "decision_id",
+    "ts",
+    "policy_profile",
+    "recommended_action",
+    "safety_class",
+    "required_prechecks",
+    "verification_steps",
+    "policy_trace",
+    "failover",
+    "mission"
+  ],
+  "allowed_policy_profiles": [
+    "observe-v1",
+    "assist-v1",
+    "autonomous-v1"
+  ],
+  "allowed_safety_classes": [
+    "safe",
+    "caution",
+    "blocked"
+  ],
+  "allowlisted_actions": [
+    "status_check",
+    "compose_up",
+    "shutdown"
+  ],
+  "allowlisted_action_prefixes": [
+    "restart_service:"
+  ],
+  "allowed_restart_services": [
+    "wicap-ui",
+    "wicap-processor",
+    "wicap-scout",
+    "wicap-redis"
+  ],
+  "max_verification_steps": 10,
+  "optional_top_level_fields": [
+    "confidence",
+    "reasoning_class",
+    "profile_version",
+    "runbook_generation_id",
+    "cooldown_until",
+    "policy_eval"
+  ],
+  "required_policy_trace_fields": [
+    "trace_id",
+    "plane_decisions",
+    "deny_reasons",
+    "budget_state"
+  ],
+  "required_failover_fields": [
+    "auth_profile",
+    "attempt",
+    "cooldown_until",
+    "failure_class"
+  ],
+  "required_mission_fields": [
+    "graph_id",
+    "step_id",
+    "step_type",
+    "terminal_state"
+  ]
+}

@@ -1,4 +1,5 @@
 import asyncio
+import ipaddress
 import logging
 import os
 import queue
@@ -69,7 +70,47 @@ def _parse_int(value: str | None, default: int) -> int:
 
 
 def _parse_allowlist(value: str) -> list[str]:
-    return [entry.strip() for entry in value.split(",") if entry.strip()]
+    seen: set[str] = set()
+    entries: list[str] = []
+    for raw_entry in value.split(","):
+        entry = raw_entry.strip()
+        if not entry or entry in seen:
+            continue
+        seen.add(entry)
+        entries.append(entry)
+    return entries
+
+
+def _parse_client_ip(client_host: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+    token = str(client_host or "").strip()
+    if not token:
+        return None
+    # RFC 6874 zone IDs can appear on link-local IPv6 addresses.
+    if "%" in token:
+        token = token.split("%", 1)[0]
+    try:
+        return ipaddress.ip_address(token)
+    except ValueError:
+        return None
+
+
+def _allowlist_entry_matches(entry: str, client_host: str) -> bool:
+    if not entry:
+        return False
+    if entry == client_host:
+        return True
+
+    if "/" not in entry:
+        return False
+
+    client_ip = _parse_client_ip(client_host)
+    if client_ip is None:
+        return False
+    try:
+        network = ipaddress.ip_network(entry, strict=False)
+    except ValueError:
+        return False
+    return client_ip in network
 
 
 # =============================================================================
@@ -142,7 +183,10 @@ evidence_collector = EvidenceCollector()
 # =============================================================================
 def _validate_internal_access(request: Request) -> None:
     client_host = request.client.host if request.client else ""
-    if INTERNAL_ALLOWLIST and client_host not in INTERNAL_ALLOWLIST:
+    if INTERNAL_ALLOWLIST and not any(
+        _allowlist_entry_matches(entry, client_host)
+        for entry in INTERNAL_ALLOWLIST
+    ):
         raise HTTPException(status_code=403, detail="Client not allowed")
 
     provided_secret = request.headers.get("X-WICAP-SECRET", "")

@@ -1,6 +1,8 @@
 import app.main as main_mod
+import pytest
 from app.services import admin as admin_service
 from app.services import state
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 client = TestClient(main_mod.app)
@@ -44,3 +46,35 @@ def test_admin_allowlist_blocks_unknown_host(monkeypatch, tmp_path):
 
     resp = client.get("/api/admin/captures", headers={"X-WICAP-SECRET": "test-secret"})
     assert resp.status_code == 403
+
+
+def test_internal_allowlist_allows_client_within_cidr(monkeypatch):
+    _configure_admin_auth(monkeypatch, allowlist=["192.168.0.0/24"])
+
+    request = type(
+        "RequestStub",
+        (),
+        {
+            "client": type("ClientStub", (), {"host": "192.168.0.42"})(),
+            "headers": {"X-WICAP-SECRET": "test-secret"},
+        },
+    )()
+
+    state._validate_internal_access(request)
+
+
+def test_internal_allowlist_rejects_client_outside_cidr(monkeypatch):
+    _configure_admin_auth(monkeypatch, allowlist=["192.168.0.0/24"])
+
+    request = type(
+        "RequestStub",
+        (),
+        {
+            "client": type("ClientStub", (), {"host": "10.10.10.20"})(),
+            "headers": {"X-WICAP-SECRET": "test-secret"},
+        },
+    )()
+
+    with pytest.raises(HTTPException) as excinfo:
+        state._validate_internal_access(request)
+    assert excinfo.value.status_code == 403

@@ -12,6 +12,7 @@ These should be set via environment variables or a `.env` file (git-ignored).
 Related enforcement flags:
 - `WICAP_INTERNAL_SECRET_REQUIRED` (default `true`)
 - `WICAP_INTERNAL_ALLOWLIST` (default `127.0.0.1,::1`)
+  - Supports exact hosts and CIDR entries (for example `192.168.0.0/24`).
 
 Admin UI usage:
 - The Admin Console reads `WICAP_INTERNAL_SECRET` from a browser-local setting and sends it
@@ -47,6 +48,8 @@ Redis (if enabled):
 
 Core → UI:
 - `WICAP_UI_URL` (default `http://localhost:8080`)
+  - Recommended for host-network Docker deploys: `http://127.0.0.1:8080` for processor push stability.
+  - LAN/browser access is still via the host IP/hostname on port `8080` when UI binds `0.0.0.0`.
 
 OTLP export (provider-neutral telemetry):
 - `WICAP_OTLP_PROFILE` (default `disabled`; options: `disabled`, `self_hosted`, `vendor`, `cloud`)

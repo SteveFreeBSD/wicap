@@ -17,11 +17,13 @@ from pathlib import Path
 # Try to import config, handle running as script
 try:
     from .config import NexusConfig, get_nexus_config
+    from .path_resolver import resolve_wordlist_search_paths
 except ImportError:
     # Standalone mode support
     import sys
     sys.path.append(str(Path(__file__).parent.parent))
     from nexus.config import NexusConfig, get_nexus_config
+    from nexus.path_resolver import resolve_wordlist_search_paths
 
 logger = logging.getLogger('nexus.wordlist_manager')
 
@@ -35,12 +37,8 @@ class WordlistManager:
         self.wordlist_dir = Path(config.wordlist_dir)
         self.temp_dir = self._init_temp_dir()
 
-        # Known wordlist locations to check
-        self.search_paths = [
-            self.wordlist_dir,
-            Path('/usr/share/wordlists'),
-            Path('/opt/seclists/Passwords'),
-        ]
+        # Known wordlist locations to check (env-overridable).
+        self.search_paths = resolve_wordlist_search_paths(self.wordlist_dir)
 
         self.inventory: dict[str, Path] = {}
         self._discover_wordlists()

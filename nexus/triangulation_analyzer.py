@@ -12,12 +12,13 @@ import json
 import logging
 import os
 import re
-import shutil
 import subprocess
 import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from nexus.path_resolver import pipal_probe_description, resolve_pipal_command
 
 logger = logging.getLogger('nexus.triangulation')
 
@@ -139,17 +140,12 @@ class TriangulationAnalyzer:
         }
 
         try:
-            pipal_bin = shutil.which('pipal')
-            if not pipal_bin:
-                # Try common opt path
-                opt_path = Path('/opt/pipal/pipal.rb')
-                if opt_path.exists():
-                    pipal_bin = f"ruby {opt_path}"
-                else:
-                    logger.error("Pipal not found in PATH or /opt/pipal/pipal.rb")
-                    return {}
+            pipal_cmd = resolve_pipal_command()
+            if not pipal_cmd:
+                logger.error(f"Pipal not found (checked {pipal_probe_description()})")
+                return {}
 
-            cmd = (pipal_bin.split() if ' ' in pipal_bin else [pipal_bin]) + [potfile_path]
+            cmd = list(pipal_cmd) + [potfile_path]
             proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
 
             if proc.returncode == 0:

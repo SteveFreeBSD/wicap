@@ -126,11 +126,21 @@ def check_playwright_env():
     # Try to detect SUDO_USER to find their browser cache.
     sudo_user = os.environ.get("SUDO_USER")
     if sudo_user:
+        user_home = os.environ.get("SUDO_HOME", "").strip()
         try:
-            import pwd
+            if not user_home:
+                import pwd
 
-            user_home = pwd.getpwnam(sudo_user).pw_dir
+                user_home = pwd.getpwnam(sudo_user).pw_dir
         except Exception:
+            pass
+        if not user_home:
+            expanded = os.path.expanduser(f"~{sudo_user}")
+            if expanded and expanded != f"~{sudo_user}":
+                user_home = expanded
+        if not user_home:
+            user_home = os.environ.get("HOME", "").strip()
+        if not user_home:
             user_home = f"/home/{sudo_user}"
         candidate = os.path.join(user_home, ".cache", "ms-playwright")
         if os.path.isdir(candidate):

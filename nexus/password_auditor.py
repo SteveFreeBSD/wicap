@@ -9,7 +9,6 @@ Supports multiple attack strategies from quick checks to exhaustive brute-force.
 
 import logging
 import os
-import shutil
 import subprocess
 import tempfile
 import time
@@ -25,6 +24,7 @@ except ImportError:
     PYODBC_AVAILABLE = False
 
 from .config import NexusConfig, get_nexus_config
+from .path_resolver import resolve_pipal_command
 
 logger = logging.getLogger('nexus.password_auditor')
 
@@ -259,9 +259,7 @@ class PasswordAuditor:
 
     def is_pipal_available(self) -> bool:
         """Check if Pipal is available."""
-        if shutil.which('pipal'):
-            return True
-        return Path('/opt/pipal/pipal.rb').exists()
+        return resolve_pipal_command() is not None
 
     def check_potfile(self, hash_value: str) -> str | None:
         """

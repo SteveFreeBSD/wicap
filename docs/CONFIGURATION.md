@@ -103,10 +103,14 @@ Optional env:
 - `WICAP_DWELL_BASELINE_ON_START` (default `false`; mark existing dwell files as processed on startup)
 - `WICAP_SCAVENGER_RAW_READER` (default `false`; enable RawPcapReader/RawPcapNgReader fast path)
 - `NEXUS_WORDLISTS_DIR` (default `./captures/wordlists`; external corpus path for password-audit dictionaries)
+- `WICAP_WORDLIST_SEARCH_PATHS` (optional `:`-separated corpus paths; overrides default system search roots when set)
+- `WICAP_PIPAL_PATH` (optional explicit path to `pipal` binary or `pipal.rb`)
 
 _Note:_ Large dictionary corpora are intentionally externalized and not tracked
 in this repository. Place optional corpora under `NEXUS_WORDLISTS_DIR` or
 system paths like `/usr/share/wordlists`.
+_Note:_ If `WICAP_WORDLIST_SEARCH_PATHS` is set, NEXUS searches only the configured
+paths (plus `NEXUS_WORDLISTS_DIR`) instead of default system roots.
 
 ## Bluetooth (BLE)
 

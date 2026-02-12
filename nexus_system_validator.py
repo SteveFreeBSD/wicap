@@ -1,7 +1,6 @@
 
 import logging
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -13,6 +12,7 @@ sys.path.append(os.getcwd())
 
 try:
     from nexus.config import get_nexus_config
+    from nexus.path_resolver import pipal_probe_description, resolve_pipal_command
     from nexus.password_auditor_enhanced import EnhancedPasswordAuditor
     from nexus.triangulation_analyzer import TriangulationAnalyzer
     from nexus.wordlist_manager import WordlistManager
@@ -64,12 +64,11 @@ class NexusValidator:
         self.check_tool("CeWL", ["cewl"])
 
         # Robust Pipal Check
-        if shutil.which('pipal'):
-            self.check_tool("Pipal", ["pipal"])
-        elif Path('/opt/pipal/pipal.rb').exists():
-            self.log_result("success", "Tool Pipal is available via /opt/pipal/pipal.rb")
+        pipal_cmd = resolve_pipal_command()
+        if pipal_cmd:
+            self.check_tool("Pipal", pipal_cmd, "--help")
         else:
-            self.log_result("failure", "Tool Pipal is MISSING (checked PATH and /opt/pipal/pipal.rb)")
+            self.log_result("failure", f"Tool Pipal is MISSING (checked {pipal_probe_description()})")
 
         self.check_tool("PRINCE (pp64)", ["pp64"], "--help")
 

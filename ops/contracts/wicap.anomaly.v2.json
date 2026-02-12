@@ -1,0 +1,70 @@
+{
+  "name": "wicap-anomaly-event-envelope-v2",
+  "version": "2.0.0",
+  "schema": "wicap.anomaly.v2",
+  "anomaly_contract_version": "wicap.anomaly.v2",
+  "required_top_level_fields": [
+    "anomaly_contract_version",
+    "ts",
+    "category",
+    "signature",
+    "sensor_id",
+    "scope",
+    "primary_score",
+    "score",
+    "confidence",
+    "severity",
+    "is_anomaly",
+    "baseline_ready",
+    "baseline_maturity",
+    "baseline_sample_count",
+    "feature_window",
+    "feature_vector",
+    "shadow_scores",
+    "model_votes",
+    "vote_agreement",
+    "score_components",
+    "drift_state",
+    "evidence_event_ids"
+  ],
+  "required_feature_window_fields": [
+    "window_start",
+    "window_end",
+    "event_count"
+  ],
+  "required_drift_state_fields": [
+    "status",
+    "delta",
+    "long_mean",
+    "short_mean",
+    "sample_count"
+  ],
+  "optional_top_level_fields": [
+    "bssid",
+    "ssid",
+    "explanation",
+    "model_ids"
+  ],
+  "score_bounds": {
+    "score": [
+      0,
+      100
+    ],
+    "primary_score": [
+      0,
+      100
+    ],
+    "confidence": [
+      0,
+      100
+    ],
+    "severity": [
+      1,
+      5
+    ],
+    "vote_agreement": [
+      0,
+      1
+    ]
+  }
+}

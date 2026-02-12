@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 ANOMALY_CONTRACT_VERSION = "wicap.anomaly.v1"
+ANOMALY_CONTRACT_VERSION_V2 = "wicap.anomaly.v2"
 
 
 def _score_value(score: object, field: str, default: object = None) -> object:
@@ -108,6 +109,64 @@ def normalize_wicap_anomaly_event(
     return payload
 
 
+def normalize_wicap_anomaly_event_v2(
+    score: object,
+    *,
+    sensor_id: str = "wicap-local",
+) -> dict[str, Any]:
+    """Normalize one stream anomaly score into `wicap.anomaly.v2`."""
+    payload = normalize_wicap_anomaly_event(score, sensor_id=sensor_id)
+    payload["anomaly_contract_version"] = ANOMALY_CONTRACT_VERSION_V2
+    payload["primary_score"] = round(_safe_float(_score_value(score, "primary_score", payload.get("score", 0.0))), 6)
+
+    raw_shadow = _score_value(score, "shadow_scores", {})
+    shadow_scores: dict[str, float] = {}
+    if isinstance(raw_shadow, Mapping):
+        for key, value in raw_shadow.items():
+            shadow_scores[str(key)] = round(_safe_float(value), 6)
+
+    raw_votes = _score_value(score, "model_votes", {})
+    model_votes: dict[str, bool] = {}
+    if isinstance(raw_votes, Mapping):
+        for key, value in raw_votes.items():
+            model_votes[str(key)] = bool(value)
+
+    score_components = _score_value(score, "score_components", {})
+    if not isinstance(score_components, Mapping):
+        score_components = {}
+
+    drift_state = _score_value(score, "drift_state", {})
+    if not isinstance(drift_state, Mapping):
+        drift_state = {}
+
+    if not shadow_scores:
+        shadow_scores["primary"] = round(_safe_float(payload.get("score", 0.0)), 6)
+    if not model_votes:
+        model_votes["primary"] = bool(payload.get("is_anomaly", False))
+
+    agreement = 0.0
+    if model_votes:
+        positives = sum(1 for value in model_votes.values() if bool(value))
+        agreement = max(positives, len(model_votes) - positives) / float(len(model_votes))
+
+    payload["shadow_scores"] = shadow_scores
+    payload["model_votes"] = model_votes
+    payload["model_ids"] = sorted(shadow_scores.keys())
+    payload["vote_agreement"] = round(float(agreement), 6)
+    payload["score_components"] = {
+        str(key): round(_safe_float(value), 6)
+        for key, value in dict(score_components).items()
+    }
+    payload["drift_state"] = {
+        "status": str(drift_state.get("status", "stable")),
+        "delta": round(_safe_float(drift_state.get("delta", 0.0)), 6),
+        "long_mean": round(_safe_float(drift_state.get("long_mean", 0.0)), 6),
+        "short_mean": round(_safe_float(drift_state.get("short_mean", 0.0)), 6),
+        "sample_count": _safe_int(drift_state.get("sample_count", 0), default=0),
+    }
+    return payload
+
+
 def append_anomaly_events(
     *,
     output_path: Path,
@@ -127,3 +186,22 @@ def append_anomaly_events(
             written += 1
     return int(written)
 
+
+def append_anomaly_events_v2(
+    *,
+    output_path: Path,
+    scores: Sequence[object],
+    sensor_id: str = "wicap-local",
+    anomalies_only: bool = True,
+) -> int:
+    """Append normalized anomaly events to `wicap.anomaly.v2` JSONL artifact path."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    written = 0
+    with output_path.open("a", encoding="utf-8") as handle:
+        for score in scores:
+            payload = normalize_wicap_anomaly_event_v2(score, sensor_id=sensor_id)
+            if anomalies_only and not bool(payload.get("is_anomaly")):
+                continue
+            handle.write(json.dumps(payload, separators=(",", ":")) + "\n")
+            written += 1
+    return int(written)

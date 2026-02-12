@@ -119,7 +119,7 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.111.0
     container_name: wicap-otel-collector
-    profiles: ["otel"]
+    profiles: ["otel", "observability"]
     command: ["--config=/etc/otelcol/config.yaml"]
     volumes:
       - ./ops/otel/collector-config.yaml:/etc/otelcol/config.yaml:ro
@@ -127,6 +127,44 @@ services:
     ports:
       - "4317:4317"
       - "4318:4318"
+    restart: unless-stopped
+
+  # 6. Intel Sidecar Worker (optional profile)
+  intel-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: wicap-core:latest
+    container_name: wicap-intel-worker
+    network_mode: "host"
+    profiles: ["intel"]
+    volumes:
+      - .:/app
+      - /etc/localtime:/etc/localtime:ro
+    env_file: .env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - WICAP_FEATURE_STREAM_ENABLED=${WICAP_FEATURE_STREAM_ENABLED:-true}
+      - WICAP_BASELINE_STREAM_ENABLED=${WICAP_BASELINE_STREAM_ENABLED:-true}
+      - WICAP_ANOMALY_STREAM_ENABLED=${WICAP_ANOMALY_STREAM_ENABLED:-true}
+      - WICAP_ANOMALY_SQL_PERSIST_ENABLED=${WICAP_ANOMALY_SQL_PERSIST_ENABLED:-false}
+      - WICAP_INTEL_WORKER_INTERVAL_SECONDS=${WICAP_INTEL_WORKER_INTERVAL_SECONDS:-10}
+    command: ["python3", "scripts/run_intel_worker.py"]
+    restart: unless-stopped
+    depends_on:
+      - redis
+
+  # 7. Jaeger (optional profile)
+  jaeger:
+    image: jaegertracing/all-in-one:1.60
+    container_name: wicap-jaeger
+    profiles: ["observability"]
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686"
+      - "14250:14250"
+      - "14268:14268"
     restart: unless-stopped
 
 volumes:

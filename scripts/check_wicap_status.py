@@ -118,6 +118,8 @@ def _local_status_json(cfg) -> dict[str, Any]:
         "event_queue.jsonl": captures_dir / "event_queue.jsonl",
         "curated_events.jsonl": captures_dir / "curated_events.jsonl",
         "summary_stats.jsonl": captures_dir / "summary_stats.jsonl",
+        "wicap_anomaly_events_v2.jsonl": captures_dir / "wicap_anomaly_events_v2.jsonl",
+        "wicap_predictions.jsonl": captures_dir / "wicap_predictions.jsonl",
         "processor.state.json": captures_dir / "processor.state.json",
         "dedup_cache.json": captures_dir / "dedup_cache.json",
     }
@@ -143,6 +145,8 @@ def _local_status_json(cfg) -> dict[str, Any]:
     last_queue, last_queue_err = _last_json(queue_path)
     last_curated, last_curated_err = _last_json(captures_dir / "curated_events.jsonl")
     last_summary, last_summary_err = _last_json(captures_dir / "summary_stats.jsonl")
+    last_anomaly_v2, last_anomaly_v2_err = _last_json(captures_dir / "wicap_anomaly_events_v2.jsonl")
+    last_prediction, last_prediction_err = _last_json(captures_dir / "wicap_predictions.jsonl")
 
     backlog = None
     if state and queue_path.exists():
@@ -170,6 +174,21 @@ def _local_status_json(cfg) -> dict[str, Any]:
         "last_curated_error": last_curated_err,
         "last_summary": last_summary,
         "last_summary_error": last_summary_err,
+        "last_anomaly_v2": last_anomaly_v2,
+        "last_anomaly_v2_error": last_anomaly_v2_err,
+        "last_prediction": last_prediction,
+        "last_prediction_error": last_prediction_err,
+        "control_plane": {
+            "runtime_plane": str(os.getenv("WICAP_CONTROL_RUNTIME_PLANE_ENABLED", "true")).strip().lower()
+            not in {"0", "false", "no", "off", "disabled"},
+            "tool_policy_plane": str(os.getenv("WICAP_CONTROL_TOOL_POLICY_PLANE_ENABLED", "true")).strip().lower()
+            not in {"0", "false", "no", "off", "disabled"},
+            "elevated_plane": str(os.getenv("WICAP_CONTROL_ELEVATED_PLANE_ENABLED", "false")).strip().lower()
+            in {"1", "true", "yes", "on", "enabled"},
+            "active_policy_profile": os.getenv("WICAP_CONTROL_ACTIVE_POLICY_PROFILE", "observe-v1").strip() or "observe-v1",
+            "profile_version": os.getenv("WICAP_CONTROL_ACTIVE_POLICY_PROFILE_VERSION", "1").strip() or "1",
+            "cooldown_until": os.getenv("WICAP_CONTROL_ACTION_COOLDOWN_UNTIL", "").strip() or None,
+        },
     }
 
 
@@ -274,6 +293,8 @@ def _local_status(cfg) -> None:
         "event_queue.jsonl": captures_dir / "event_queue.jsonl",
         "curated_events.jsonl": captures_dir / "curated_events.jsonl",
         "summary_stats.jsonl": captures_dir / "summary_stats.jsonl",
+        "wicap_anomaly_events_v2.jsonl": captures_dir / "wicap_anomaly_events_v2.jsonl",
+        "wicap_predictions.jsonl": captures_dir / "wicap_predictions.jsonl",
         "processor.state.json": captures_dir / "processor.state.json",
         "dedup_cache.json": captures_dir / "dedup_cache.json",
     }
@@ -332,6 +353,39 @@ def _local_status(cfg) -> None:
         )
     elif err and err != "missing":
         _print_kv("summary.last", err)
+
+    anomaly_v2_path = captures_dir / "wicap_anomaly_events_v2.jsonl"
+    last_anomaly_v2, err = _last_json(anomaly_v2_path)
+    if last_anomaly_v2:
+        _print_kv(
+            "anomaly_v2.last",
+            f"{last_anomaly_v2.get('category')} score={last_anomaly_v2.get('score')} ts={last_anomaly_v2.get('ts')}",
+        )
+    elif err and err != "missing":
+        _print_kv("anomaly_v2.last", err)
+
+    prediction_path = captures_dir / "wicap_predictions.jsonl"
+    last_prediction, err = _last_json(prediction_path)
+    if last_prediction:
+        _print_kv(
+            "prediction.last",
+            f"risk={last_prediction.get('risk_score')} horizon={last_prediction.get('horizon_sec')} ts={last_prediction.get('ts')}",
+        )
+    elif err and err != "missing":
+        _print_kv("prediction.last", err)
+
+    _print_kv(
+        "control.profile",
+        os.getenv("WICAP_CONTROL_ACTIVE_POLICY_PROFILE", "observe-v1").strip() or "observe-v1",
+    )
+    _print_kv(
+        "control.profile_ver",
+        os.getenv("WICAP_CONTROL_ACTIVE_POLICY_PROFILE_VERSION", "1").strip() or "1",
+    )
+    _print_kv(
+        "control.cooldown",
+        os.getenv("WICAP_CONTROL_ACTION_COOLDOWN_UNTIL", "").strip() or "none",
+    )
 
 
 def _sql_status() -> None:

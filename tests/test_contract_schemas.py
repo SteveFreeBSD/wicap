@@ -138,12 +138,67 @@ def test_wicap_feedback_contract_shape_and_allowed_labels() -> None:
     assert int(contract.get("note_max_len", 0)) >= 256
 
 
+def test_wicap_anomaly_v2_contract_shape_and_shadow_fields() -> None:
+    contract = _read_json(_CONTRACT_DIR / "wicap.anomaly.v2.json")
+
+    assert contract.get("schema") == "wicap.anomaly.v2"
+    assert contract.get("anomaly_contract_version") == "wicap.anomaly.v2"
+
+    required = contract.get("required_top_level_fields")
+    assert isinstance(required, list)
+    required_set = {str(item) for item in required}
+    for key in {
+        "primary_score",
+        "shadow_scores",
+        "model_votes",
+        "vote_agreement",
+        "score_components",
+        "drift_state",
+    }:
+        assert key in required_set
+
+    drift_fields = contract.get("required_drift_state_fields")
+    assert isinstance(drift_fields, list)
+    assert {str(item) for item in drift_fields} >= {
+        "status",
+        "delta",
+        "long_mean",
+        "short_mean",
+        "sample_count",
+    }
+
+
+def test_wicap_prediction_contract_shape_and_horizons() -> None:
+    contract = _read_json(_CONTRACT_DIR / "wicap.prediction.v1.json")
+
+    assert contract.get("schema") == "wicap.prediction.v1"
+    assert contract.get("prediction_contract_version") == "wicap.prediction.v1"
+
+    required = contract.get("required_top_level_fields")
+    assert isinstance(required, list)
+    required_set = {str(item) for item in required}
+    for key in {
+        "risk_score",
+        "horizon_sec",
+        "top_contributors",
+        "confidence_band",
+        "evidence_refs",
+    }:
+        assert key in required_set
+
+    horizons = contract.get("allowed_horizons_sec")
+    assert isinstance(horizons, list)
+    assert {int(item) for item in horizons} == {300, 1800}
+
+
 def test_contract_fixtures_match_contract_files() -> None:
     for name in (
         "wicap.event.v1.json",
         "wicap.control.v1.json",
         "wicap.anomaly.v1.json",
         "wicap.feedback.v1.json",
+        "wicap.anomaly.v2.json",
+        "wicap.prediction.v1.json",
     ):
         contract = _read_json(_CONTRACT_DIR / name)
         fixture = _read_json(_FIXTURE_DIR / name)

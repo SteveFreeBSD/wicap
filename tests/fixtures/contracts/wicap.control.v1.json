@@ -1,6 +1,6 @@
 {
   "name": "wicap-control-intent-envelope",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "schema": "wicap.control.v1",
   "control_intent_version": "wicap.control.v1",
   "required_top_level_fields": [
@@ -37,5 +37,22 @@
     "wicap-scout",
     "wicap-redis"
   ],
-  "max_verification_steps": 10
+  "max_verification_steps": 10,
+  "optional_top_level_fields": [
+    "confidence",
+    "reasoning_class",
+    "profile_version",
+    "runbook_generation_id",
+    "cooldown_until",
+    "policy_eval"
+  ],
+  "policy_eval_fields": [
+    "runtime_plane",
+    "tool_policy_plane",
+    "elevated_plane",
+    "requires_elevated",
+    "denied_by",
+    "profile_version",
+    "cooldown_until"
+  ]
 }

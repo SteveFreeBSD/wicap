@@ -31,6 +31,7 @@ def _intent(action: str) -> dict[str, object]:
 def test_control_intent_endpoint_accepts_valid_intent_with_execute_false(monkeypatch, tmp_path) -> None:
     _configure_internal_auth(monkeypatch)
     monkeypatch.setenv("WICAP_CONTROL_ACTIVE_POLICY_PROFILE", "observe-v1")
+    monkeypatch.setenv("WICAP_CONTROL_ACTIVE_POLICY_PROFILE_VERSION", "2026.02")
     monkeypatch.setenv("WICAP_CONTROL_ELEVATED_PLANE_ENABLED", "false")
     audit_path = tmp_path / "control-intents.jsonl"
     monkeypatch.setenv("WICAP_CONTROL_AUDIT_PATH", str(audit_path))
@@ -45,6 +46,8 @@ def test_control_intent_endpoint_accepts_valid_intent_with_execute_false(monkeyp
     assert payload["accepted"] is True
     assert payload["dispatch"]["status"] == "skipped"
     assert payload["plane_evaluation"]["denied_by"] is None
+    assert payload["profile_version"] == "2026.02"
+    assert payload["policy_eval"]["profile_version"] == "2026.02"
     assert audit_path.exists()
     first_line = audit_path.read_text(encoding="utf-8").splitlines()[0]
     audit_payload = json.loads(first_line)
@@ -66,6 +69,7 @@ def test_control_intent_endpoint_rejects_non_allowlisted_action(monkeypatch, tmp
     payload = response.json()
     assert payload["accepted"] is False
     assert payload["plane_evaluation"]["denied_by"] == "tool_policy_plane"
+    assert payload["denied_by"] == "tool_policy_plane"
     assert any("not allowlisted" in reason for reason in payload["reasons"])
 
 

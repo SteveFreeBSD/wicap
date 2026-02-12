@@ -1,0 +1,40 @@
+{
+  "name": "wicap-prediction-envelope",
+  "version": "1.0.0",
+  "schema": "wicap.prediction.v1",
+  "prediction_contract_version": "wicap.prediction.v1",
+  "required_top_level_fields": [
+    "prediction_contract_version",
+    "ts",
+    "sensor_id",
+    "scope",
+    "risk_score",
+    "horizon_sec",
+    "top_contributors",
+    "confidence_band",
+    "evidence_refs"
+  ],
+  "allowed_horizons_sec": [
+    300,
+    1800
+  ],
+  "required_confidence_band_fields": [
+    "low",
+    "high"
+  ],
+  "optional_top_level_fields": [
+    "category",
+    "signature",
+    "summary"
+  ],
+  "score_bounds": {
+    "risk_score": [
+      0,
+      100
+    ],
+    "confidence_band_low_high": [
+      0,
+      100
+    ]
+  }
+}

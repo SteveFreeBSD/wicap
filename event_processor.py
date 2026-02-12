@@ -54,9 +54,14 @@ except ImportError:
 try:
     from src.wicap.core.processing.deduplicator import DedupCache
     from src.wicap.core.processing.persistence import PersistenceManager
-    from src.wicap.telemetry.anomaly_events import append_anomaly_events, normalize_wicap_anomaly_event
+    from src.wicap.telemetry.anomaly_events import (
+        append_anomaly_events,
+        append_anomaly_events_v2,
+        normalize_wicap_anomaly_event,
+    )
     from src.wicap.telemetry.network_events import normalize_wicap_event
     from src.wicap.telemetry.otlp_resilience import build_resilient_otlp_exporter
+    from src.wicap.telemetry.prediction_events import append_prediction_events, build_prediction_events
 except ImportError:
     # Fallback: ensure repo root is on sys.path so `src` namespace is importable.
     repo_root = Path(__file__).resolve().parent
@@ -65,9 +70,14 @@ except ImportError:
     from src.wicap.core.processing.deduplicator import DedupCache
     from src.wicap.core.processing.persistence import PersistenceManager
     try:
-        from src.wicap.telemetry.anomaly_events import append_anomaly_events, normalize_wicap_anomaly_event
+        from src.wicap.telemetry.anomaly_events import (
+            append_anomaly_events,
+            append_anomaly_events_v2,
+            normalize_wicap_anomaly_event,
+        )
     except ImportError:
         append_anomaly_events = None
+        append_anomaly_events_v2 = None
         normalize_wicap_anomaly_event = None
     try:
         from src.wicap.telemetry.network_events import normalize_wicap_event
@@ -77,6 +87,11 @@ except ImportError:
         from src.wicap.telemetry.otlp_resilience import build_resilient_otlp_exporter
     except ImportError:
         build_resilient_otlp_exporter = None
+    try:
+        from src.wicap.telemetry.prediction_events import append_prediction_events, build_prediction_events
+    except ImportError:
+        append_prediction_events = None
+        build_prediction_events = None
 
 # Configure logging
 logger = logging.getLogger('wicap.processor')
@@ -267,6 +282,8 @@ class EventProcessor:
         self.curated_path = config.captures_dir / "curated_events.jsonl"
         self.network_events_path = config.captures_dir / "wicap_network_events.jsonl"
         self.anomaly_events_path = config.captures_dir / "wicap_anomaly_events.jsonl"
+        self.anomaly_events_v2_path = config.captures_dir / "wicap_anomaly_events_v2.jsonl"
+        self.prediction_events_path = config.captures_dir / "wicap_predictions.jsonl"
         self.dedup_cache_path = config.captures_dir / "dedup_cache.json"
         self.summary_stats_path = config.captures_dir / "summary_stats.jsonl"
         self.sensor_id = os.getenv("WICAP_SENSOR_ID", "wicap-local").strip() or "wicap-local"
@@ -1418,6 +1435,36 @@ class EventProcessor:
                                 sensor_id=self.sensor_id,
                                 anomalies_only=True,
                             )
+                            if append_anomaly_events_v2 is not None:
+                                append_anomaly_events_v2(
+                                    output_path=self.anomaly_events_v2_path,
+                                    scores=scores,
+                                    sensor_id=self.sensor_id,
+                                    anomalies_only=True,
+                                )
+                            if build_prediction_events is not None and append_prediction_events is not None:
+                                prediction_horizons = os.getenv("WICAP_PREDICTION_HORIZONS_SEC", "").strip()
+                                horizons = [300, 1800]
+                                if prediction_horizons:
+                                    parsed: list[int] = []
+                                    for token in prediction_horizons.split(","):
+                                        try:
+                                            value = int(token.strip())
+                                        except ValueError:
+                                            continue
+                                        if value > 0:
+                                            parsed.append(value)
+                                    if parsed:
+                                        horizons = sorted(set(parsed))
+                                prediction_events = build_prediction_events(
+                                    scores=scores,
+                                    horizons_sec=horizons,
+                                    sensor_id=self.sensor_id,
+                                )
+                                append_prediction_events(
+                                    output_path=self.prediction_events_path,
+                                    events=prediction_events,
+                                )
                         except Exception as exc:
                             if not self._anomaly_export_warned:
                                 logger.warning(f"Anomaly event export disabled after error: {exc}")

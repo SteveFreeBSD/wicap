@@ -11,6 +11,7 @@ import logging
 import math
 import os
 import time
+from collections import deque
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -70,6 +71,7 @@ def _default_baseline_dir() -> Path:
 class AnomalyScore:
     window: dict[str, Any]
     score: float
+    primary_score: float
     confidence: int
     severity: int
     explanation: str
@@ -77,6 +79,11 @@ class AnomalyScore:
     baseline_ready: bool
     baseline_maturity: float
     baseline_sample_count: int
+    shadow_scores: dict[str, float]
+    model_votes: dict[str, bool]
+    vote_agreement: float
+    score_components: dict[str, float]
+    drift_state: dict[str, Any]
 
 
 def _baseline_maturity(snapshot: BaselineSnapshot, now_ts: float) -> float:
@@ -146,9 +153,15 @@ def score_window(
     severity = _severity_from_confidence(confidence)
     explanation = _explain(features, z_scores)
     is_anomaly = snapshot.ready and score >= score_threshold and confidence >= min_confidence
+    score_components = {
+        "z_rms": round(float(z_rms), 6),
+        "score_scale": round(float(score_scale), 6),
+        "baseline_maturity": round(float(maturity), 6),
+    }
     return AnomalyScore(
         window=window,
         score=score,
+        primary_score=score,
         confidence=confidence,
         severity=severity,
         explanation=explanation,
@@ -156,6 +169,17 @@ def score_window(
         baseline_ready=snapshot.ready,
         baseline_maturity=maturity,
         baseline_sample_count=snapshot.sample_count,
+        shadow_scores={"primary": round(float(score), 6)},
+        model_votes={"primary": bool(is_anomaly)},
+        vote_agreement=1.0,
+        score_components=score_components,
+        drift_state={
+            "status": "stable",
+            "delta": 0.0,
+            "long_mean": round(float(score), 6),
+            "short_mean": round(float(score), 6),
+            "sample_count": 1,
+        },
     )
 
 
@@ -175,6 +199,7 @@ class StreamAnomalyScorer:
         attack_type: str = "anomaly_stream",
         calibration_store: CalibrationStore | None = None,
         calibration_refresh_sec: int = 300,
+        persist_to_sql: bool = True,
     ) -> None:
         self.store = store
         self.baseline_store = baseline_store
@@ -193,6 +218,53 @@ class StreamAnomalyScorer:
         self._calibration_warned = False
         self._calibration_snapshot: CalibrationSnapshot | None = None
         self._calibration_refreshed = 0.0
+        self.persist_to_sql = bool(persist_to_sql)
+        self._recent_scores: deque[float] = deque(maxlen=256)
+        self._ewma_score: float | None = None
+
+    def _shadow_and_drift(self, primary_score: float, *, score_threshold: float) -> tuple[dict[str, float], dict[str, bool], float, dict[str, Any]]:
+        self._recent_scores.append(float(primary_score))
+        values = list(self._recent_scores)
+        long_window = values[-60:] if len(values) >= 60 else values
+        short_window = values[-10:] if len(values) >= 10 else values
+
+        long_mean = (sum(long_window) / float(len(long_window))) if long_window else float(primary_score)
+        short_mean = (sum(short_window) / float(len(short_window))) if short_window else float(primary_score)
+        delta = short_mean - long_mean
+
+        self._ewma_score = float(primary_score) if self._ewma_score is None else ((0.25 * float(primary_score)) + (0.75 * float(self._ewma_score)))
+        ewma_drift = abs(float(primary_score) - float(self._ewma_score))
+        robust_delta = abs(delta)
+
+        mad = 0.0
+        if long_window:
+            median = sorted(long_window)[len(long_window) // 2]
+            deviations = [abs(item - median) for item in long_window]
+            mad = sorted(deviations)[len(deviations) // 2] if deviations else 0.0
+        mad_norm = 0.0 if mad <= 1e-6 else abs(float(primary_score) - long_mean) / mad
+
+        shadow_scores = {
+            "primary": round(float(primary_score), 6),
+            "mad_robust": round(min(100.0, mad_norm * 10.0), 6),
+            "ewma_drift": round(min(100.0, ewma_drift), 6),
+            "delta_abs": round(min(100.0, robust_delta), 6),
+        }
+        model_votes = {
+            "primary": float(primary_score) >= float(score_threshold),
+            "mad_robust": float(shadow_scores["mad_robust"]) >= float(score_threshold * 0.75),
+            "ewma_drift": float(shadow_scores["ewma_drift"]) >= float(max(10.0, score_threshold * 0.2)),
+            "delta_abs": float(shadow_scores["delta_abs"]) >= float(max(8.0, score_threshold * 0.15)),
+        }
+        positives = sum(1 for value in model_votes.values() if bool(value))
+        vote_agreement = max(positives, len(model_votes) - positives) / float(len(model_votes)) if model_votes else 1.0
+        drift_state = {
+            "status": "drift" if abs(delta) >= 12.5 and len(values) >= 20 else "stable",
+            "delta": round(float(delta), 6),
+            "long_mean": round(float(long_mean), 6),
+            "short_mean": round(float(short_mean), 6),
+            "sample_count": int(len(values)),
+        }
+        return shadow_scores, model_votes, float(vote_agreement), drift_state
 
     def _maybe_refresh_calibration(self, now_ts: float) -> CalibrationSnapshot | None:
         if self.calibration_store is None:
@@ -247,6 +319,27 @@ class StreamAnomalyScorer:
                 min_confidence=min_confidence,
                 now_ts=ts,
             )
+            shadow_scores, model_votes, vote_agreement, drift_state = self._shadow_and_drift(
+                result.score,
+                score_threshold=float(score_threshold),
+            )
+            result.shadow_scores = shadow_scores
+            result.model_votes = model_votes
+            result.vote_agreement = round(float(vote_agreement), 6)
+            result.drift_state = drift_state
+            result.score_components = {
+                **dict(result.score_components),
+                "shadow_mad_robust": float(shadow_scores.get("mad_robust", 0.0)),
+                "shadow_ewma_drift": float(shadow_scores.get("ewma_drift", 0.0)),
+                "shadow_delta_abs": float(shadow_scores.get("delta_abs", 0.0)),
+                "vote_agreement": round(float(vote_agreement), 6),
+            }
+            primary_votes = sum(1 for value in model_votes.values() if bool(value))
+            vote_ratio = float(primary_votes) / float(len(model_votes)) if model_votes else 0.0
+            if result.baseline_ready and vote_ratio >= 0.5 and result.confidence >= self.min_confidence:
+                result.is_anomaly = True
+            if str(drift_state.get("status")) == "drift":
+                result.confidence = int(max(0, round(result.confidence * 0.85)))
             results.append(result)
             if window_end > self._last_scored_end:
                 self._last_scored_end = window_end
@@ -254,6 +347,8 @@ class StreamAnomalyScorer:
 
     def persist_anomalies(self, scores: Sequence[AnomalyScore]) -> int:
         if not scores:
+            return 0
+        if not self.persist_to_sql:
             return 0
         if pyodbc is None:
             raise RuntimeError("pyodbc is required for stream anomaly persistence")
@@ -272,9 +367,15 @@ class StreamAnomalyScorer:
                 {
                     "features": window.get("features") or {},
                     "score": round(score.score, 6),
+                    "primary_score": round(score.primary_score, 6),
                     "confidence": score.confidence,
                     "baseline_maturity": round(score.baseline_maturity, 3),
                     "baseline_sample_count": score.baseline_sample_count,
+                    "shadow_scores": score.shadow_scores,
+                    "model_votes": score.model_votes,
+                    "vote_agreement": round(score.vote_agreement, 4),
+                    "drift_state": score.drift_state,
+                    "score_components": score.score_components,
                 }
             )
             rows.append(
@@ -413,7 +514,8 @@ def build_stream_scorer(
         store = build_feature_store(redis_url)
     if store is None:
         return None
-    if not connection_string:
+    persist_to_sql = _env_bool("WICAP_ANOMALY_SQL_PERSIST_ENABLED", True)
+    if persist_to_sql and not connection_string:
         logger.warning("Stream anomaly scorer disabled: SQL connection string missing.")
         return None
     score_threshold = _safe_float(os.getenv("WICAP_ANOMALY_SCORE_THRESHOLD")) or DEFAULT_SCORE_THRESHOLD
@@ -441,4 +543,5 @@ def build_stream_scorer(
         attack_type=attack_type,
         calibration_store=calibration_store,
         calibration_refresh_sec=calibration_refresh_sec,
+        persist_to_sql=persist_to_sql,
     )

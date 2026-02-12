@@ -17,7 +17,9 @@ _ENV_RUNTIME_PLANE_ENABLED = "WICAP_CONTROL_RUNTIME_PLANE_ENABLED"
 _ENV_TOOL_POLICY_PLANE_ENABLED = "WICAP_CONTROL_TOOL_POLICY_PLANE_ENABLED"
 _ENV_ELEVATED_PLANE_ENABLED = "WICAP_CONTROL_ELEVATED_PLANE_ENABLED"
 _ENV_ACTIVE_POLICY_PROFILE = "WICAP_CONTROL_ACTIVE_POLICY_PROFILE"
+_ENV_ACTIVE_POLICY_PROFILE_VERSION = "WICAP_CONTROL_ACTIVE_POLICY_PROFILE_VERSION"
 _ENV_AUDIT_PATH = "WICAP_CONTROL_AUDIT_PATH"
+_ENV_ACTION_COOLDOWN_UNTIL = "WICAP_CONTROL_ACTION_COOLDOWN_UNTIL"
 
 _FALLBACK_CONTRACT: dict[str, Any] = {
     "schema": "wicap.control.v1",
@@ -38,6 +40,14 @@ _FALLBACK_CONTRACT: dict[str, Any] = {
     "allowlisted_action_prefixes": ["restart_service:"],
     "allowed_restart_services": ["wicap-ui", "wicap-processor", "wicap-scout", "wicap-redis"],
     "max_verification_steps": 10,
+    "optional_top_level_fields": [
+        "confidence",
+        "reasoning_class",
+        "profile_version",
+        "runbook_generation_id",
+        "cooldown_until",
+        "policy_eval",
+    ],
 }
 
 
@@ -68,6 +78,15 @@ def _active_policy_profile() -> str:
     return os.environ.get(_ENV_ACTIVE_POLICY_PROFILE, "observe-v1").strip() or "observe-v1"
 
 
+def _active_policy_profile_version() -> str:
+    return os.environ.get(_ENV_ACTIVE_POLICY_PROFILE_VERSION, "1").strip() or "1"
+
+
+def _cooldown_until_marker() -> str | None:
+    value = os.environ.get(_ENV_ACTION_COOLDOWN_UNTIL, "").strip()
+    return value or None
+
+
 def _action_requires_elevated(action: str) -> bool:
     normalized = str(action).strip().lower()
     if normalized in {"compose_up", "shutdown"}:
@@ -82,6 +101,8 @@ def _plane_evaluation(
     elevated_enabled: bool,
     requires_elevated: bool,
     denied_by: str | None,
+    profile_version: str,
+    cooldown_until: str | None,
 ) -> dict[str, Any]:
     return {
         "runtime_plane": runtime_enabled,
@@ -89,6 +110,8 @@ def _plane_evaluation(
         "elevated_plane": elevated_enabled if requires_elevated else True,
         "requires_elevated": requires_elevated,
         "denied_by": denied_by,
+        "profile_version": str(profile_version).strip() or "1",
+        "cooldown_until": cooldown_until,
     }
 
 
@@ -201,6 +224,24 @@ def validate_control_intent(
                 f"verification_steps exceeds max_verification_steps ({len(verification_steps)} > {max_steps})"
             )
 
+    profile_version = payload.get("profile_version")
+    if profile_version is not None and not str(profile_version).strip():
+        errors.append("profile_version must be non-empty when provided")
+
+    runbook_generation_id = payload.get("runbook_generation_id")
+    if runbook_generation_id is not None and not str(runbook_generation_id).strip():
+        errors.append("runbook_generation_id must be non-empty when provided")
+
+    cooldown_until = payload.get("cooldown_until")
+    if cooldown_until is not None:
+        text = str(cooldown_until).strip()
+        if not text:
+            errors.append("cooldown_until must be non-empty when provided")
+
+    policy_eval = payload.get("policy_eval")
+    if policy_eval is not None and not isinstance(policy_eval, dict):
+        errors.append("policy_eval must be an object when provided")
+
     return len(errors) == 0, errors
 
 
@@ -229,6 +270,8 @@ def evaluate_control_intent(
         reasons.append("tool policy plane disabled")
 
     expected_policy_profile = (active_policy_profile or _active_policy_profile()).strip()
+    profile_version = str(payload.get("profile_version") or _active_policy_profile_version()).strip() or "1"
+    cooldown_until = str(payload.get("cooldown_until") or _cooldown_until_marker() or "").strip() or None
     if expected_policy_profile:
         actual_profile = str(payload.get("policy_profile", "")).strip()
         if actual_profile != expected_policy_profile:
@@ -251,7 +294,12 @@ def evaluate_control_intent(
         elevated_enabled=elevated_enabled,
         requires_elevated=requires_elevated,
         denied_by=None if accepted else denied_by,
+        profile_version=profile_version,
+        cooldown_until=cooldown_until,
     )
+    # Expose provided policy_eval payload for explainability/audit parity.
+    if isinstance(payload.get("policy_eval"), dict):
+        plane_metadata["intent_policy_eval"] = dict(payload.get("policy_eval", {}))
     return accepted, reasons, plane_metadata
 
 

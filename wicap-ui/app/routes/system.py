@@ -53,6 +53,38 @@ def _read_tail_json(path: Path, max_bytes: int = 16384) -> dict | None:
     return None
 
 
+def _control_plane_state() -> dict[str, Any]:
+    runtime_enabled = os.getenv("WICAP_CONTROL_RUNTIME_PLANE_ENABLED", "true").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+        "disabled",
+    }
+    tool_enabled = os.getenv("WICAP_CONTROL_TOOL_POLICY_PLANE_ENABLED", "true").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+        "disabled",
+    }
+    elevated_enabled = os.getenv("WICAP_CONTROL_ELEVATED_PLANE_ENABLED", "false").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+        "enabled",
+    }
+    return {
+        "runtime_plane": bool(runtime_enabled),
+        "tool_policy_plane": bool(tool_enabled),
+        "elevated_plane": bool(elevated_enabled),
+        "active_policy_profile": os.getenv("WICAP_CONTROL_ACTIVE_POLICY_PROFILE", "observe-v1").strip() or "observe-v1",
+        "profile_version": os.getenv("WICAP_CONTROL_ACTIVE_POLICY_PROFILE_VERSION", "1").strip() or "1",
+        "cooldown_until": os.getenv("WICAP_CONTROL_ACTION_COOLDOWN_UNTIL", "").strip() or None,
+    }
+
+
 def _read_redis_queue_depth(redis_url: str) -> int | None:
     if not redis_url:
         return None
@@ -131,6 +163,14 @@ async def api_system_status():
         "queue_depth_events": None,
         "queue_last_ts": None,
         "queue_last_event_age_sec": None,
+        "control_plane": _control_plane_state(),
+        "intel_worker": {
+            "container_state": "unknown",
+            "healthy": None,
+            "latest_anomaly_v2_ts": None,
+            "latest_prediction_ts": None,
+            "latest_drift_state": None,
+        },
     }
 
     # 1. Container Status
@@ -156,6 +196,23 @@ async def api_system_status():
                 status["service_status"] = "stopped"
         except Exception:
             pass
+
+    # Optional intel sidecar health + latest anomaly/prediction signals.
+    try:
+        if client:
+            intel = client.containers.get("wicap-intel-worker")
+            intel_state = str(intel.attrs.get("State", {}).get("Status", "unknown"))
+            intel_health = intel.attrs.get("State", {}).get("Health", {})
+            status["intel_worker"]["container_state"] = intel_state
+            status["intel_worker"]["healthy"] = (
+                str(intel_health.get("Status", "")).lower() == "healthy"
+                if isinstance(intel_health, dict) and intel_health
+                else None
+            )
+        else:
+            status["intel_worker"]["container_state"] = "unavailable"
+    except Exception:
+        status["intel_worker"]["container_state"] = "not_found"
 
     # 2. Database Metrics (EPS)
     def _query(conn):
@@ -242,6 +299,16 @@ async def api_system_status():
         status["queue_last_ts"] = None
         status["queue_last_event_age_sec"] = None
 
+    anomaly_v2 = _read_tail_json(capture_dir / "wicap_anomaly_events_v2.jsonl")
+    if isinstance(anomaly_v2, dict):
+        status["intel_worker"]["latest_anomaly_v2_ts"] = anomaly_v2.get("ts")
+        drift_state = anomaly_v2.get("drift_state")
+        if isinstance(drift_state, dict):
+            status["intel_worker"]["latest_drift_state"] = drift_state
+    prediction = _read_tail_json(capture_dir / "wicap_predictions.jsonl")
+    if isinstance(prediction, dict):
+        status["intel_worker"]["latest_prediction_ts"] = prediction.get("ts")
+
     status["ui_memory"] = memprof.summary()
 
     return status
@@ -316,7 +383,15 @@ async def api_system_control_intent(request: Request, payload: dict[str, Any], e
         "decision_id": (intent.get("decision_id") if isinstance(intent, dict) else None),
         "recommended_action": action,
         "policy_profile": (intent.get("policy_profile") if isinstance(intent, dict) else None),
+        "profile_version": (
+            (intent.get("profile_version") or plane.get("profile_version"))
+            if isinstance(intent, dict)
+            else plane.get("profile_version")
+        ),
         "reasons": reasons,
+        "policy_eval": plane,
+        "denied_by": plane.get("denied_by"),
+        "cooldown_until": plane.get("cooldown_until"),
         "plane_evaluation": plane,
         "execute_requested": bool(execute),
         "dispatch": {"executed": False, "status": "skipped", "detail": "execute=false"},
@@ -329,8 +404,12 @@ async def api_system_control_intent(request: Request, payload: dict[str, Any], e
         "decision_id": response["decision_id"],
         "recommended_action": response["recommended_action"],
         "policy_profile": response["policy_profile"],
+        "profile_version": response["profile_version"],
         "accepted": response["accepted"],
+        "denied_by": response["denied_by"],
+        "cooldown_until": response["cooldown_until"],
         "reasons": response["reasons"],
+        "policy_eval": response["policy_eval"],
         "plane_evaluation": response["plane_evaluation"],
         "execute_requested": response["execute_requested"],
         "dispatch": response["dispatch"],

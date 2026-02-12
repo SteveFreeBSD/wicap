@@ -5,8 +5,16 @@ from pathlib import Path
 
 from src.wicap.telemetry.anomaly_events import (
     ANOMALY_CONTRACT_VERSION,
+    ANOMALY_CONTRACT_VERSION_V2,
     append_anomaly_events,
+    append_anomaly_events_v2,
     normalize_wicap_anomaly_event,
+    normalize_wicap_anomaly_event_v2,
+)
+from src.wicap.telemetry.prediction_events import (
+    PREDICTION_CONTRACT_VERSION,
+    append_prediction_events,
+    build_prediction_events,
 )
 
 
@@ -74,3 +82,47 @@ def test_append_anomaly_events_writes_only_flagged_anomalies_by_default(tmp_path
     assert row["sensor_id"] == "sensor-z"
     assert bool(row["is_anomaly"]) is True
 
+
+def test_normalize_wicap_anomaly_event_v2_emits_shadow_and_drift_fields() -> None:
+    score = _sample_anomaly(is_anomaly=True)
+    score["shadow_scores"] = {"mad_robust": 71.2, "ewma_drift": 18.5}
+    score["model_votes"] = {"primary": True, "mad_robust": True, "ewma_drift": False}
+    score["vote_agreement"] = 0.6667
+    score["score_components"] = {"z_rms": 2.0, "baseline_maturity": 0.92}
+    score["drift_state"] = {
+        "status": "drift",
+        "delta": 13.2,
+        "long_mean": 40.0,
+        "short_mean": 53.2,
+        "sample_count": 64,
+    }
+    payload = normalize_wicap_anomaly_event_v2(score, sensor_id="sensor-b")
+    assert payload["anomaly_contract_version"] == ANOMALY_CONTRACT_VERSION_V2
+    assert float(payload["primary_score"]) == float(payload["score"])
+    assert payload["shadow_scores"]["mad_robust"] == 71.2
+    assert payload["drift_state"]["status"] == "drift"
+    assert payload["model_votes"]["primary"] is True
+
+
+def test_append_anomaly_events_v2_writes_jsonl_rows(tmp_path: Path) -> None:
+    output_path = tmp_path / "wicap_anomaly_events_v2.jsonl"
+    scores = [_sample_anomaly(is_anomaly=False), _sample_anomaly(is_anomaly=True)]
+    written = append_anomaly_events_v2(output_path=output_path, scores=scores, sensor_id="sensor-v2")
+    assert int(written) == 1
+    rows = [json.loads(line) for line in output_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert len(rows) == 1
+    assert rows[0]["anomaly_contract_version"] == ANOMALY_CONTRACT_VERSION_V2
+
+
+def test_build_prediction_events_and_append_jsonl(tmp_path: Path) -> None:
+    scores = [_sample_anomaly(is_anomaly=True)]
+    events = build_prediction_events(scores=scores, horizons_sec=[300, 1800], sensor_id="sensor-p")
+    assert len(events) == 2
+    assert {int(item["horizon_sec"]) for item in events} == {300, 1800}
+    assert all(item["prediction_contract_version"] == PREDICTION_CONTRACT_VERSION for item in events)
+
+    output_path = tmp_path / "wicap_predictions.jsonl"
+    written = append_prediction_events(output_path=output_path, events=events)
+    assert int(written) == 2
+    rows = [json.loads(line) for line in output_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert len(rows) == 2

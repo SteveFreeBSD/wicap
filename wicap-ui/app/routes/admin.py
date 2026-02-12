@@ -162,6 +162,7 @@ async def api_replay_capture(filename: str):
 async def api_get_logs():
     # Get wicap-core logs via Docker or Local File
     raw_logs = ""
+    log_lookback_seconds = max(60, int(os.getenv("WICAP_ADMIN_LOG_LOOKBACK_SECONDS", "3600")))
 
     # Try Docker first
     try:
@@ -172,7 +173,11 @@ async def api_get_logs():
             for name in ["wicap-scout", "wicap-processor-1", "wicap-wicap-processor-1", "wicap-core"]:
                 try:
                     container = client.containers.get(name)
-                    c_logs = container.logs(tail=100).decode("utf-8", errors="replace")
+                    c_logs = container.logs(
+                        tail=200,
+                        since=max(0, int(time.time()) - int(log_lookback_seconds)),
+                        timestamps=True,
+                    ).decode("utf-8", errors="replace")
                     if c_logs:
                         raw_logs += f"\n--- {name} ---\n{c_logs}"
                 except Exception:
@@ -225,11 +230,19 @@ async def api_get_logs():
             if not line.strip():
                 continue
             clean_line = ansi_escape.sub("", line)
+            docker_ts = ""
+            docker_prefix_match = re.match(
+                r"^(\d{4}-\d{2}-\d{2}T[0-9:\.\+\-Z]+)\s+(.*)$",
+                clean_line,
+            )
+            if docker_prefix_match:
+                docker_ts = str(docker_prefix_match.group(1))
+                clean_line = str(docker_prefix_match.group(2))
 
             # Parse [SERVICE] YYYY-MM-DD HH:MM:SS [LEVEL] module: message
             # Regex to capture: Service, Timestamp, Level, Rest
             match = re.search(
-                r"^\[(\w+)\]\s+(?:(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})(?:,\d+)?)?\s*\[(\w+)\]\s+(.*)",
+                r"^\[(\w+)\]\s+(?:(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:,\d+)?)\s*)?\[(\w+)\]\s+(.*)",
                 clean_line,
             )
 
@@ -245,7 +258,7 @@ async def api_get_logs():
                 parsed_logs.append(
                     {
                         "service": service,
-                        "time": ts.split()[1] if ts else "",
+                        "time": ts if ts else docker_ts,
                         "level": level,
                         "message": msg,
                     }

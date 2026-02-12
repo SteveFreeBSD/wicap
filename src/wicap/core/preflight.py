@@ -22,6 +22,24 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _default_route_interface() -> str | None:
+    try:
+        result = subprocess.run(
+            ["ip", "route", "show", "default"],
+            capture_output=True,
+            text=True,
+        )
+    except Exception:
+        return None
+    if result.returncode != 0:
+        return None
+    for line in result.stdout.splitlines():
+        match = re.search(r"\bdev\s+(\S+)", line.strip())
+        if match:
+            return match.group(1)
+    return None
+
+
 def list_wireless_interfaces() -> list[str]:
     interfaces: list[str] = []
 
@@ -140,6 +158,24 @@ def resolve_wifi_interface(preferred: str | None = None) -> str | None:
             "Unable to resolve Wi-Fi interface. Set WICAP_INTERFACE or WICAP_INTERFACE_MAC/REGEX."
         )
         return None
+
+    management_iface = _default_route_interface()
+    allow_management = _env_bool("WICAP_ALLOW_MANAGEMENT_INTERFACE", default=False)
+    if management_iface and selected == management_iface and not allow_management:
+        logger.error(
+            "Resolved Wi-Fi interface '%s' matches default-route management interface '%s'. "
+            "Refusing to proceed to avoid disconnecting host network. "
+            "Set WICAP_ALLOW_MANAGEMENT_INTERFACE=true only if this is intentional.",
+            selected,
+            management_iface,
+        )
+        return None
+    if management_iface and selected == management_iface and allow_management:
+        logger.warning(
+            "Using management interface '%s' for capture because "
+            "WICAP_ALLOW_MANAGEMENT_INTERFACE=true is set.",
+            selected,
+        )
 
     logger.info("Resolved Wi-Fi interface: %s (available=%s)", selected, ", ".join(interfaces))
     return selected

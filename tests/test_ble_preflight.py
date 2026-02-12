@@ -33,3 +33,25 @@ def test_resolve_ble_interface_falls_back_to_ttyacm_when_configured_missing(monk
 
     monkeypatch.setattr(preflight.glob, "glob", fake_glob)
     assert preflight.resolve_ble_interface() == "/dev/ttyACM0"
+
+
+def test_resolve_wifi_interface_blocks_management_interface_by_default(monkeypatch):
+    monkeypatch.delenv("WICAP_ALLOW_MANAGEMENT_INTERFACE", raising=False)
+    monkeypatch.delenv("WICAP_INTERFACE_MAC", raising=False)
+    monkeypatch.delenv("WICAP_INTERFACE_REGEX", raising=False)
+    monkeypatch.delenv("WICAP_INTERFACE_EXCLUDE_REGEX", raising=False)
+    monkeypatch.setattr(preflight, "list_wireless_interfaces", lambda: ["wlo1"])
+    monkeypatch.setattr(preflight, "_default_route_interface", lambda: "wlo1")
+
+    assert preflight.resolve_wifi_interface(preferred="auto") is None
+
+
+def test_resolve_wifi_interface_allows_management_with_explicit_override(monkeypatch):
+    monkeypatch.setenv("WICAP_ALLOW_MANAGEMENT_INTERFACE", "true")
+    monkeypatch.delenv("WICAP_INTERFACE_MAC", raising=False)
+    monkeypatch.delenv("WICAP_INTERFACE_REGEX", raising=False)
+    monkeypatch.delenv("WICAP_INTERFACE_EXCLUDE_REGEX", raising=False)
+    monkeypatch.setattr(preflight, "list_wireless_interfaces", lambda: ["wlo1"])
+    monkeypatch.setattr(preflight, "_default_route_interface", lambda: "wlo1")
+
+    assert preflight.resolve_wifi_interface(preferred="auto") == "wlo1"

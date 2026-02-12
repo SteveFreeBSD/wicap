@@ -24,6 +24,7 @@ Admin UI usage:
 - `WICAP_INTERFACE_MAC` (optional; auto-select interface by MAC address)
 - `WICAP_INTERFACE_REGEX` (optional; auto-select interface by name regex)
 - `WICAP_INTERFACE_EXCLUDE_REGEX` (optional; exclude interfaces from auto-selection)
+- `WICAP_ALLOW_MANAGEMENT_INTERFACE` (default `false`; safety gate to block using default-route management interface for capture)
   - `start_wicap.py` now auto-resolves the interface (prefers `wlan1`) and will abort
     early if no suitable Wi‑Fi interface is detected.
 - `WICAP_BANDS` (default `2.4ghz`; options: `2.4ghz`, `5ghz`, `6ghz`, `all`)

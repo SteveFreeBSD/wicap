@@ -28,6 +28,46 @@ def _parse_time_offset(value: str, now_ts: float) -> float:
     return float(value)
 
 
+def _compact_time_label(ts_text: str) -> str:
+    """Normalize raw timestamps to compact local HH:MM:SS display."""
+    text = str(ts_text or "").strip()
+    if not text:
+        return ""
+
+    # Native line timestamps: "YYYY-MM-DD HH:MM:SS,mmm"
+    if " " in text and "-" in text:
+        parts = text.split(" ", 1)
+        if len(parts) == 2:
+            return parts[1].split(",", 1)[0]
+
+    # Docker timestamp prefix: "YYYY-MM-DDTHH:MM:SS(.nnn)?(Z|+00:00)"
+    match = re.match(
+        r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:?\d{2})?$",
+        text,
+    )
+    if match:
+        base, frac, zone = match.groups()
+        frac_part = ""
+        if frac:
+            frac_part = "." + frac[:6].ljust(6, "0")
+        zone_part = ""
+        if zone:
+            if zone == "Z":
+                zone_part = "+00:00"
+            elif len(zone) == 5 and zone[3] != ":":
+                zone_part = f"{zone[:3]}:{zone[3:]}"
+            else:
+                zone_part = zone
+        try:
+            parsed = datetime.fromisoformat(base + frac_part + zone_part)
+            local_dt = parsed.astimezone() if parsed.tzinfo is not None else parsed
+            return local_dt.strftime("%H:%M:%S")
+        except Exception:
+            pass
+
+    return text
+
+
 @router.get("/api/admin/captures", dependencies=[Depends(state._require_admin)])
 async def api_list_captures():
     # List files in /app/captures.
@@ -258,7 +298,7 @@ async def api_get_logs():
                 parsed_logs.append(
                     {
                         "service": service,
-                        "time": ts if ts else docker_ts,
+                        "time": _compact_time_label(ts if ts else docker_ts),
                         "level": level,
                         "message": msg,
                     }

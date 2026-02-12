@@ -3,7 +3,7 @@ import re
 import subprocess
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -34,11 +34,21 @@ def _compact_time_label(ts_text: str) -> str:
     if not text:
         return ""
 
-    # Native line timestamps: "YYYY-MM-DD HH:MM:SS,mmm"
+    # Native line timestamps: "YYYY-MM-DD HH:MM:SS,mmm" or "YYYY-MM-DD HH:MM:SS"
+    # Treat these as UTC and convert to local display time for compact UI consistency.
     if " " in text and "-" in text:
-        parts = text.split(" ", 1)
-        if len(parts) == 2:
-            return parts[1].split(",", 1)[0]
+        parsed_line = None
+        for pattern in ("%Y-%m-%d %H:%M:%S,%f", "%Y-%m-%d %H:%M:%S"):
+            try:
+                parsed_line = datetime.strptime(text, pattern)
+                break
+            except ValueError:
+                continue
+        if parsed_line is not None:
+            try:
+                return parsed_line.replace(tzinfo=timezone.utc).astimezone().strftime("%H:%M:%S")
+            except Exception:
+                return parsed_line.strftime("%H:%M:%S")
 
     # Docker timestamp prefix: "YYYY-MM-DDTHH:MM:SS(.nnn)?(Z|+00:00)"
     match = re.match(
